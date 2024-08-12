@@ -15,6 +15,9 @@ from Auction import Auction
 from Bidder import *  # EmpiricalShadedBidder, TruthfulBidder
 from BidderAllocation import *  #  LogisticTSAllocator, OracleAllocator
 
+from OurAgent import OurAgent
+from Publisher import Publisher
+
 
 def parse_kwargs(kwargs):
     parsed = ','.join([f'{key}={value}' for key, value in kwargs.items()])
@@ -71,10 +74,16 @@ def parse_config(path):
     for agent, items in agents2items.items():
         agents2items[agent] = np.hstack((items, - 3.0 - 1.0 * rng.random((items.shape[0], 1))))
 
-    return rng, config, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size, embedding_var, obs_embedding_size
+    # Publishers configs
+    publisher_configs = config['publishers']
+
+    return (rng, config, agent_configs, agents2items, agents2item_values, publisher_configs,
+            num_runs, max_slots, embedding_size, embedding_var, obs_embedding_size)
 
 
-def instantiate_agents(rng, agent_configs, agents2item_values, agents2items):
+def instantiate_agents(
+        rng, agent_configs, agents2item_values, agents2items,
+):
     # Store agents to be re-instantiated in subsequent runs
     # Set up agents
     agents = [
@@ -86,7 +95,26 @@ def instantiate_agents(rng, agent_configs, agents2item_values, agents2items):
               bidder=eval(f"{agent_config['bidder']['type']}(rng=rng{parse_kwargs(agent_config['bidder']['kwargs'])})"),
               memory=(0 if 'memory' not in agent_config.keys() else agent_config['memory']))
         for agent_config in agent_configs
+        if 'budget' not in agent_config.keys()
     ]
+
+    our_agent_config = [agent_config for agent_config in agent_configs if 'budget' in agent_config.keys()][0]
+    our_agent = OurAgent(
+        rng=rng,
+        name=our_agent_config['name'],
+        num_items=our_agent_config['num_items'],
+        item_values=agents2item_values[our_agent_config['name']],
+        budget=our_agent_config['budget'],
+        allocator=eval(
+            f"{our_agent_config['allocator']['type']}(rng=rng{parse_kwargs(our_agent_config['allocator']['kwargs'])})"
+        ),
+        bidder=eval(
+            f"{our_agent_config['bidder']['type']}(rng=rng{parse_kwargs(our_agent_config['bidder']['kwargs'])})"
+        ),
+        memory=(0 if 'memory' not in our_agent_config.keys() else our_agent_config['memory'])
+    )
+
+    agents.append(our_agent)
 
     for agent in agents:
         if isinstance(agent.allocator, OracleAllocator):
@@ -107,6 +135,96 @@ def instantiate_auction(rng, config, agents2items, agents2item_values, agents, m
                     obs_embedding_size,
                     config['num_participants_per_round']),
             config['num_iter'], config['rounds_per_iter'], config['output_dir'])
+
+
+def instantiate_publishers(rng, publisher_configs, embedding_size):
+    return [
+        Publisher(
+            rng=rng,
+            name=publisher_config['name'],
+            mean=publisher_config['mean'],
+            variance=publisher_config['variance'],
+            num_auctions=publisher_config['num_auctions'],
+            embedding_size=embedding_size
+        )
+        for publisher_config in publisher_configs
+    ]
+
+
+def get_agent_spent(agent: Agent | OurAgent) -> float:
+    spent = 0
+    for opp in agent.logs:
+        if opp.won:
+            spent += opp.bid
+    return spent
+
+
+def get_agent_opp_won(agent: Agent | OurAgent) -> int:
+    opp_won = 0
+    for opp in agent.logs:
+        if opp.won:
+            opp_won += 1
+    return opp_won
+
+
+def new_simulation_run():
+    for i in range(num_iter):
+        print(f'==== ITERATION {i} ====')
+        # Round-robin over publishers
+        pub_auctions = {publisher.name: publisher.num_auctions for publisher in publishers}
+        total_auctions = sum(pub_auctions.values())
+        with tqdm(total=total_auctions) as pbar:
+            while sum(pub_auctions.values()) > 0:
+                for publisher in publishers:
+                    if pub_auctions[publisher.name] > 0:
+                        curr_user_context = publisher.generate_user_context()
+                        auction.simulate_opportunity(curr_user_context)
+                        pub_auctions[publisher.name] -= 1
+                        pbar.update(1)
+
+        names = [agent.name for agent in auction.agents]
+        net_utilities = [agent.net_utility for agent in auction.agents]
+        gross_utilities = [agent.gross_utility for agent in auction.agents]
+
+        result = pd.DataFrame({'Name': names, 'Net': net_utilities, 'Gross': gross_utilities})
+
+        print(result)
+        print(f'\tAuction revenue: \t {auction.revenue}')
+
+        for agent_id, agent in enumerate(auction.agents):
+            if isinstance(agent, OurAgent):
+                print(f'Our Agent {agent.name} has spent {agent.spending} out of {agent.budget}, '
+                      f'winning {get_agent_opp_won(agent)} opportunities')
+            else:
+                print(f'Agent {agent.name} has spent {get_agent_spent(agent)}, '
+                      f'winning {get_agent_opp_won(agent)} opportunities')
+            agent.update(iteration=i, plot=True, figsize=FIGSIZE, fontsize=FONTSIZE)
+
+            agent2net_utility[agent.name].append(agent.net_utility)
+            agent2gross_utility[agent.name].append(agent.gross_utility)
+
+            agent2allocation_regret[agent.name].append(agent.get_allocation_regret())
+            agent2estimation_regret[agent.name].append(agent.get_estimation_regret())
+            agent2overbid_regret[agent.name].append(agent.get_overbid_regret())
+            agent2underbid_regret[agent.name].append(agent.get_underbid_regret())
+
+            agent2CTR_RMSE[agent.name].append(agent.get_CTR_RMSE())
+            agent2CTR_bias[agent.name].append(agent.get_CTR_bias())
+
+            if isinstance(agent.bidder, PolicyLearningBidder) or isinstance(agent.bidder, DoublyRobustBidder):
+                agent2gamma[agent.name].append(torch.mean(torch.Tensor(agent.bidder.gammas)).detach().item())
+            elif not agent.bidder.truthful:
+                agent2gamma[agent.name].append(np.mean(agent.bidder.gammas))
+
+            best_expected_value = np.mean([opp.best_expected_value for opp in agent.logs])
+            agent2best_expected_value[agent.name].append(best_expected_value)
+
+            print('Average Best Value for Agent: ', best_expected_value)
+            agent.clear_utility()
+            agent.clear_logs()
+
+        auction_revenue.append(auction.revenue)
+        auction.clear_revenue()
 
 
 def simulation_run():
@@ -161,7 +279,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Parse configuration file
-    rng, config, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size, embedding_var, obs_embedding_size = parse_config(args.config)
+    (rng, config, agent_configs, agents2items, agents2item_values, publisher_configs, num_runs, max_slots,
+     embedding_size, embedding_var, obs_embedding_size) = parse_config(args.config)
 
     # Plotting config
     FIGSIZE = (8, 5)
@@ -186,7 +305,11 @@ if __name__ == '__main__':
     for run in range(num_runs):
         # Reinstantiate agents and auction per run
         agents = instantiate_agents(rng, agent_configs, agents2item_values, agents2items)
-        auction, num_iter, rounds_per_iter, output_dir = instantiate_auction(rng, config, agents2items, agents2item_values, agents, max_slots, embedding_size, embedding_var, obs_embedding_size)
+        auction, num_iter, rounds_per_iter, output_dir = instantiate_auction(rng, config, agents2items,
+                                                                             agents2item_values, agents, max_slots,
+                                                                             embedding_size, embedding_var,
+                                                                             obs_embedding_size)
+        publishers = instantiate_publishers(rng, publisher_configs, embedding_size)
 
         # Placeholders for summary statistics per run
         agent2net_utility = defaultdict(list)
@@ -204,7 +327,8 @@ if __name__ == '__main__':
         auction_revenue = []
 
         # Run simulation (with global parameters -- fine for the purposes of this script)
-        simulation_run()
+        # simulation_run()
+        new_simulation_run()
 
         # Store
         run2agent2net_utility[run] = agent2net_utility

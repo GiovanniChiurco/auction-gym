@@ -1,0 +1,91 @@
+{
+  "random_seed": 0,
+  "num_runs": 3,
+  "num_iter" : 20,
+  "rounds_per_iter": 10000,
+  "num_participants_per_round": 2,
+  "embedding_size": 5,
+  "embedding_var": 1.0,
+  "obs_embedding_size": 4,
+  "allocation": "FirstPrice",
+  "publishers": [
+    {
+      "name": "repubblica.it",
+      "num_auctions": 10000,
+      "mean": 1,
+      "variance": 2
+    },
+    {
+      "name": "corriere.it",
+      "num_auctions": 10000,
+      "mean": 1.4,
+      "variance": 2
+    },
+    {
+        "name": "gazzetta.it",
+        "num_auctions": 10000,
+        "mean": 1.8,
+        "variance": 2
+    },
+    {
+        "name": "sole24ore.it",
+        "num_auctions": 10000,
+        "mean": 2.2,
+        "variance": 2
+    },
+    {
+        "name": "ilfattoquotidiano.it",
+        "num_auctions": 10000,
+        "mean": 2.6,
+        "variance": 2
+    },
+    {
+        "name": "ilgiornale.it",
+        "num_auctions": 10000,
+        "mean": 3,
+        "variance": 2
+    },
+    {
+        "name": "lastampa.it",
+        "num_auctions": 10000,
+        "mean": 3.4,
+        "variance": 2
+    },
+    {
+        "name": "ilpost.it",
+        "num_auctions": 10000,
+        "mean": 3.8,
+        "variance": 2
+    }
+  ],
+  "agents": [
+    {
+      "name": "Oracle, DM (search)",
+      "num_copies": 3,
+      "num_items": 12,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+          "type": "TruthfulBidder",
+          "kwargs": {}
+      }
+    },
+    {
+      "name": "Our Agent",
+      "num_copies": 1,
+      "num_items": 5,
+      "budget": 10000,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+          "type": "TruthfulBidder",
+          "kwargs": {}
+      }
+    }
+  ],
+  "output_dir": "results/FP_Truthful_Oracle_Budget/"
+}

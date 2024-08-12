@@ -5,6 +5,8 @@ import numpy as np
 
 from BidderAllocation import OracleAllocator
 from Models import sigmoid
+from OurAgent import OurAgent
+
 
 class Auction:
     ''' Base class for auctions '''
@@ -25,13 +27,14 @@ class Auction:
 
         self.num_participants_per_round = num_participants_per_round
 
-    def simulate_opportunity(self):
+    def simulate_opportunity(self, curr_user_context):
         # Sample the number of slots uniformly between [1, max_slots]
         num_slots = self.rng.integers(1, self.max_slots + 1)
 
-        # Sample a true context vector
-        true_context = np.concatenate((self.rng.normal(0, self.embedding_var, size=self.embedding_size), [1.0]))
+        # # Sample a true context vector
+        # true_context = np.concatenate((self.rng.normal(0, self.embedding_var, size=self.embedding_size), [1.0]))
 
+        true_context = curr_user_context
         # Mask true context into observable context
         obs_context = np.concatenate((true_context[:self.obs_embedding_size], [1.0]))
 
@@ -47,6 +50,10 @@ class Auction:
                 bid, item = agent.bid(true_context)
             else:
                 bid, item = agent.bid(obs_context)
+            # Check if our bid is > budget
+            if isinstance(agent, OurAgent):
+                if agent.spending + bid > agent.budget:
+                    bid = 0.0
             bids.append(bid)
             # Compute the true CTRs for items in this agent's catalogue
             true_CTR = sigmoid(true_context @ self.agent2items[agent.name].T)
