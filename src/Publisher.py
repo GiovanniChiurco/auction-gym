@@ -1,20 +1,23 @@
+import pickle
 import numpy as np
 
 
 class Publisher:
-    def __init__(self, rng, name, mean, variance, num_auctions, embedding_size):
+    def __init__(self, rng, name, num_auctions):
         self.rng = rng
         self.name = name
-        # Gaussian parameters to generate user context features vectors
-        self.mean = mean
-        self.variance = variance
+        # Read from memory publisher embedding
+        self.embedding = pickle.load(open("src/publisher_embedding/data/sites/" + name + ".pkl", "rb"))
         # Number of auctions to simulate according to past data
         self.num_auctions = num_auctions
-        # User context vector size
-        self.embedding_size = embedding_size
         # Metrics of revenue
         self.revenue = .0
 
     def generate_user_context(self):
-        user_context = np.concatenate((self.rng.normal(self.mean, self.variance, size=self.embedding_size), [1.0]))
-        return user_context
+        # Definisci l'intensità del rumore
+        noise_strength = 0.01
+        # Genera il rumore gaussiano
+        noise = np.random.normal(0, noise_strength, self.embedding.shape)
+        # Aggiungi il rumore agli embedding originali
+        noisy_embeddings = self.embedding + noise
+        return noisy_embeddings

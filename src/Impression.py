@@ -3,7 +3,8 @@ from dataclasses import dataclass
 
 @dataclass
 class ImpressionOpportunity:
-    __slots__ = ['context', 'item', 'value', 'bid', 'best_expected_value', 'true_CTR', 'estimated_CTR', 'price', 'second_price', 'winning_bid', 'outcome', 'won']
+    __slots__ = ['context', 'item', 'value', 'bid', 'best_expected_value', 'true_CTR', 'estimated_CTR', 'price',
+                 'second_price', 'winning_bid', 'outcome', 'won', 'publisher_name']
 
     context: np.array
     item: np.uint32
@@ -16,6 +17,7 @@ class ImpressionOpportunity:
     second_price: np.float32
     outcome: bool
     won: bool
+    publisher_name: str
 
     def set_true_CTR(self, best_expected_value, true_CTR):
         self.best_expected_value = best_expected_value  # Best possible CTR (to compute regret from ad allocation)

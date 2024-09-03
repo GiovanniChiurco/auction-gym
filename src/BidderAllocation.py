@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from sklearn.metrics import log_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
+from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
 
 from Models import PyTorchLogisticRegression, sigmoid
@@ -79,4 +80,8 @@ class OracleAllocator(Allocator):
         self.item_embeddings = item_embeddings
 
     def estimate_CTR(self, context):
-        return sigmoid(self.item_embeddings @ context)
+        # Substitute Sigmoid with Cosine Similarity
+        # (the sigmoid of the dot product of text embeddings gives always a value between 0.5 and 0.6)
+        cos_sim = cosine_similarity([self.item_embeddings], [context])[0][0]
+        return np.array([np.max([0.0, cos_sim])])
+        # return sigmoid(self.item_embeddings @ context)

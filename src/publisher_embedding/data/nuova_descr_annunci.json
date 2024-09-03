@@ -1,0 +1,82 @@
+{
+  "aziende": [
+    {
+      "nome": "Macchine fotografiche",
+      "prodotti": [
+        {
+          "nome": "Reflex Pro",
+          "descrizione": "Fotocamera reflex con sensore full-frame da 24 MP."
+        },
+        {
+          "nome": "Mirrorless X100",
+          "descrizione": "Fotocamera mirrorless compatta con obiettivo intercambiabile."
+        }
+      ]
+    },
+    {
+      "nome": "Auto da corsa",
+      "prodotti": [
+        {
+          "nome": "Racer 1000",
+          "descrizione": "Auto da corsa rossa con motore da 1000 cavalli."
+        },
+        {
+          "nome": "Speedster GT",
+          "descrizione": "Auto da corsa con telaio in fibra di carbonio e velocità massima di 350 km/h."
+        }
+      ]
+    },
+    {
+      "nome": "Supermercato",
+      "prodotti": [
+        {
+          "nome": "Pasta Bio",
+          "descrizione": "Pasta biologica 100% italiana, confezione da 500g."
+        },
+        {
+          "nome": "Olio Extra Vergine",
+          "descrizione": "Olio extra vergine di oliva di alta qualità, bottiglia da 1 litro."
+        }
+      ]
+    },
+    {
+      "nome": "Abiti di streetwear",
+      "prodotti": [
+        {
+          "nome": "Felpa Urban",
+          "descrizione": "Felpa con cappuccio in cotone organico, design minimalista."
+        },
+        {
+          "nome": "Sneakers High-top",
+          "descrizione": "Sneakers alte in pelle con suola ammortizzata."
+        }
+      ]
+    },
+    {
+      "nome": "Prodotti finanziari e prestiti",
+      "prodotti": [
+        {
+          "nome": "Prestito Personale Flex",
+          "descrizione": "Prestito personale con tasso fisso e rimborso flessibile."
+        },
+        {
+          "nome": "Conto Risparmio Plus",
+          "descrizione": "Conto di risparmio con interessi annuali al 2%."
+        }
+      ]
+    },
+    {
+      "nome": "Telefoni cellulari",
+      "prodotti": [
+        {
+          "nome": "Smartphone Pro X",
+          "descrizione": "Smartphone con schermo OLED da 6.5 pollici e tripla fotocamera."
+        },
+        {
+          "nome": "Phone Mini",
+          "descrizione": "Telefono compatto con batteria a lunga durata e design ergonomico."
+        }
+      ]
+    }
+  ]
+}
