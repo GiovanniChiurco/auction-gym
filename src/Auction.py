@@ -23,15 +23,9 @@ class Auction:
 
         self.num_participants_per_round = num_participants_per_round
 
-    def simulate_opportunity(self, curr_user_context, publisher_name):
+    def simulate_opportunity(self, all_users_agent_similarity, publisher_name, num_iteration, true_context):
         # Sample the number of slots uniformly between [1, max_slots]
         num_slots = self.rng.integers(1, self.max_slots + 1)
-
-        # # Sample a true context vector
-        # true_context = np.concatenate((self.rng.normal(0, self.embedding_var, size=self.embedding_size), [1.0]))
-
-        true_context = curr_user_context
-        obs_context = curr_user_context
 
         # At this point, the auctioneer solicits bids from
         # the list of bidders that might want to compete.
@@ -48,15 +42,17 @@ class Auction:
             for agent in participating_agents:
                 # Get the bid and the allocated item
                 if isinstance(agent.allocator, OracleAllocator):
-                    bid, item = agent.bid(true_context, publisher_name)
+                    bid, item = agent.bid(all_users_agent_similarity, publisher_name, num_iteration, true_context)
                 else:
-                    bid, item = agent.bid(obs_context, publisher_name)
+                    bid, item = agent.bid(all_users_agent_similarity, publisher_name, num_iteration, true_context)
                 bids.append(bid)
                 # Compute the true CTRs for items in this agent's catalogue
                 # true_CTR = sigmoid(true_context @ self.agent2items[agent.name].T)
 
                 # Add this line when we use text embeddings and comment the one above
-                true_CTR = cosine_similarity([true_context], [self.agent2items[agent.name]])[0]
+                # true_CTR = cosine_similarity([true_context], [self.agent2items[agent.name]])[0]
+                # Already true CTR
+                true_CTR = all_users_agent_similarity[publisher_name][agent.name][:, num_iteration]
 
                 agent.logs[-1].set_true_CTR(np.max(true_CTR * self.agents2item_values[agent.name]), true_CTR[item])
                 CTRs.append(true_CTR[item])

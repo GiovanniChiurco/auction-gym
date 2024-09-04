@@ -121,26 +121,91 @@ def instantiate_publishers(rng, publisher_configs):
     ]
 
 
+def add_noise(user_embedding, noise_strength):
+    noise = np.random.normal(0, noise_strength, user_embedding.shape)
+    return user_embedding + noise
+
+
+def compute_user_embed_matrix(publisher, noise_strength):
+    user_embed_matrix = np.zeros((publisher.num_auctions, publisher.embedding.size))
+    for i in range(publisher.num_auctions):
+        user_embed_matrix[i] = add_noise(publisher.embedding, noise_strength)
+    return user_embed_matrix
+
+
+def compute_all_users_matrix(publishers, noise_strength):
+    all_users_matrix = {}
+    for publisher in publishers:
+        all_users_matrix[publisher.name] = compute_user_embed_matrix(publisher, noise_strength)
+    return all_users_matrix
+
+
+def agent_pub_user_similarity(agents2items, publisher, all_users_matrix):
+    user_pub_sim = {}
+    curr_pub_matrix = all_users_matrix[publisher.name]
+    for agent, ad_embedding in agents2items.items():
+        sim = cosine_similarity(ad_embedding.reshape(1, -1), curr_pub_matrix)
+        user_pub_sim[agent] = sim
+    return user_pub_sim
+
+
+def compute_matrix_user_ad(agents2items, publishers, all_users_matrix):
+    matrix_user_ad = {}
+    for publisher in publishers:
+        matrix_user_ad[publisher.name] = agent_pub_user_similarity(agents2items, publisher, all_users_matrix)
+    return matrix_user_ad
+
+
+def compute_all_users_agent_similarity(publishers, noise_strength, agents2items):
+    all_users_matrix = compute_all_users_matrix(publishers, noise_strength)
+    similarity_matrix = compute_matrix_user_ad(agents2items, publishers, all_users_matrix)
+    return all_users_matrix, similarity_matrix
+
+
 def new_simulation_run():
     for i in range(num_iter):
         print(f'==== ITERATION {i} ====')
-        # Round-robin over publishers
+        # Compute the similarity between all users and agents
+        noise_strength = 0.01
+        all_user_context, all_users_agent_similarity = compute_all_users_agent_similarity(publishers, noise_strength, agents2items)
+        # Create a mask for each agent
+        mask_pub_agent = {}
+        for publisher in publishers:
+            mask_pub_agent[publisher.name] = np.zeros(publisher.num_auctions)
+        # Iteration
+        # Variables to show progress bar
         pub_auctions = {publisher.name: publisher.num_auctions for publisher in publishers}
         total_auctions = sum(pub_auctions.values())
 
         start_time = time.time()
 
         with tqdm(total=total_auctions) as pbar:
-            while sum(pub_auctions.values()) > 0:
-                for publisher in publishers:
-                    if pub_auctions[publisher.name] > 0:
-                        # Generate a user from the current publisher
-                        curr_user_context = publisher.generate_user_context()
-                        # Simulate the auction
-                        auction.simulate_opportunity(curr_user_context, publisher.name)
+            while not all(np.all(mask == 1) for mask in mask_pub_agent.values()):
+                publisher = np.random.choice(publishers)
+                mask = mask_pub_agent[publisher.name]
+                # Catch the case when all auctions have been simulated for the current publisher
+                try:
+                    idx = np.where(mask == 0)[0][0]
+                except IndexError:
+                    continue
 
-                        pub_auctions[publisher.name] -= 1
-                        pbar.update(1)
+                curr_user_context = all_user_context[publisher.name][idx]
+                auction.simulate_opportunity(all_users_agent_similarity, publisher.name, idx, curr_user_context)
+
+                mask[idx] = 1
+                pbar.update(1)
+
+        # with tqdm(total=total_auctions) as pbar:
+        #     while sum(pub_auctions.values()) > 0:
+        #         for publisher in publishers:
+        #             if pub_auctions[publisher.name] > 0:
+        #                 # Generate a user from the current publisher
+        #                 curr_user_context = publisher.generate_user_context()
+        #                 # Simulate the auction
+        #                 auction.simulate_opportunity(curr_user_context, publisher.name)
+        #
+        #                 pub_auctions[publisher.name] -= 1
+        #                 pbar.update(1)
 
         end_time = time.time()
 
@@ -195,6 +260,10 @@ def new_simulation_run():
             agent.clear_logs()
 
         print(f'Total number of auctions won: {num_auctions_won}')
+
+        iter_end_time = time.time()
+        iter_elapsed_time = iter_end_time - start_time
+        print(f'Iteration {i} completed in {iter_elapsed_time:.2f} seconds')
 
         auction_revenue.append(auction.revenue)
         auction.clear_revenue()
@@ -297,9 +366,15 @@ if __name__ == '__main__':
 
         auction_revenue = []
 
+        start_time = time.time()
+
         # Run simulation (with global parameters -- fine for the purposes of this script)
         # simulation_run()
         new_simulation_run()
+
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f'Run {run} completed in {elapsed_time:.2f} seconds')
 
         # Store
         run2agent2net_utility[run] = agent2net_utility

@@ -1,0 +1,70 @@
+{
+  "random_seed": 0,
+  "num_runs": 1,
+  "num_iter" : 30,
+  "rounds_per_iter": 10000,
+  "num_participants_per_round": 4,
+  "embedding_size": 5,
+  "embedding_var": 1.0,
+  "obs_embedding_size": 4,
+  "allocation": "FirstPrice",
+  "publishers": [
+    {
+      "name": "corriere.it",
+      "num_auctions": 10000
+    },
+    {
+        "name": "gazzetta.it",
+        "num_auctions": 10000
+    },
+    {
+        "name": "automoto.it",
+        "num_auctions": 10000
+    },
+    {
+        "name": "milanofinanza.it",
+        "num_auctions": 10000
+    },
+    {
+      "name": "vogue.it",
+      "num_auctions": 10000
+    }
+  ],
+  "agents": [
+    {
+      "name": "Auto da corsa Smart",
+      "product_name": "Racer 1000",
+      "num_copies": 1,
+      "num_items": 1,
+      "budget": 10000000,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "PolicyLearningBidder",
+        "kwargs": {
+          "gamma_sigma":  0.02,
+          "init_gamma": 1.0,
+          "loss": "\"PPO\""
+        }
+      }
+    },
+    {
+      "name": "Auto da corsa Scem",
+      "product_name": "Racer 1000",
+      "num_copies": 4,
+      "num_items": 1,
+      "budget": 10000000,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "TruthfulBidder",
+          "kwargs": {}
+      }
+    }
+  ],
+  "output_dir": "results/FP_Oracle_auto_IPS_others_auto_Truth/"
+}

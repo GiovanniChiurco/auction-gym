@@ -31,24 +31,25 @@ class Agent:
 
         self.memory = memory
 
-    def select_item(self, context):
+    def select_item(self, all_users_agent_similarity, publisher_name, num_iteration):
         # Estimate CTR for all items
-        estim_CTRs = self.allocator.estimate_CTR(context)
+        #estim_CTRs = self.allocator.estimate_CTR(context)
+        estim_CTRs = all_users_agent_similarity[publisher_name][self.name][:, num_iteration]
         # Compute value if clicked
         estim_values = estim_CTRs * self.item_values
         # Pick the best item (according to TS)
         best_item = np.argmax(estim_values)
 
         # If we do Thompson Sampling, don't propagate the noisy bid amount but bid using the MAP estimate
-        if type(self.allocator) == PyTorchLogisticRegressionAllocator and self.allocator.thompson_sampling:
-            estim_CTRs_MAP = self.allocator.estimate_CTR(context, sample=False)
-            return best_item, estim_CTRs_MAP[best_item]
+        # if type(self.allocator) == PyTorchLogisticRegressionAllocator and self.allocator.thompson_sampling:
+        #     estim_CTRs_MAP = self.allocator.estimate_CTR(context, sample=False)
+        #     return best_item, estim_CTRs_MAP[best_item]
 
         return best_item, estim_CTRs[best_item]
 
-    def bid(self, context, publisher_name):
+    def bid(self, all_users_agent_similarity, publisher_name, num_iteration, context):
         # First, pick what item we want to choose
-        best_item, estimated_CTR = self.select_item(context)
+        best_item, estimated_CTR = self.select_item(all_users_agent_similarity, publisher_name, num_iteration)
 
         # Sample value for this item
         value = self.item_values[best_item]
@@ -183,6 +184,9 @@ class Agent:
     def agent_stats_won_publisher(self) -> pd.DataFrame:
         agent_df = self.get_agent_bid_df()
         agent_df = agent_df[agent_df['Won'] == True]
+        if agent_df.empty:
+            print('No opportunities won')
+            return agent_df
         agent_df = agent_df.groupby(by='Publisher Name') \
             .agg({'Value': 'mean', 'Bid': 'mean', 'Price': 'mean', 'Won': 'count'}) \
             .reset_index()
