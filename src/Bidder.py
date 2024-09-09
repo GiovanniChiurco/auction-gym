@@ -264,6 +264,7 @@ class ValueLearningBidder(Bidder):
         losses = np.array(losses)
 
         self.winrate_model.eval()
+
         fig, ax = plt.subplots()
         plt.title(f'{name}')
         plt.plot(losses, label=r'P(win|$gamma$,x)')

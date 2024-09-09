@@ -70,6 +70,9 @@ def parse_config(path):
 
     # Publishers configs
     publisher_configs = config['publishers']
+    # Get random publishers at the beginning of the simulation
+    # To change publishers at each iteration, put this line inside the loop
+    # publisher_configs = get_random_publishers(num_publishers, num_auctions)
 
     return (rng, config, agent_configs, agents2items, agents2item_values, publisher_configs,
             num_runs, max_slots)
@@ -160,6 +163,19 @@ def compute_all_users_agent_similarity(publishers, noise_strength, agents2items)
     all_users_matrix = compute_all_users_matrix(publishers, noise_strength)
     similarity_matrix = compute_matrix_user_ad(agents2items, publishers, all_users_matrix)
     return all_users_matrix, similarity_matrix
+
+
+def get_random_publishers(num_publishers, num_auctions):
+    sites_dir = "src/publisher_embedding/data/sites/"
+    sites = [site.replace(".pkl", "") for site in os.listdir(sites_dir)]
+    chosen_site_list = np.random.choice(sites, num_publishers, replace=False)
+    return [
+        {
+            "name": site,
+            "num_auctions": num_auctions
+        }
+        for site in chosen_site_list
+    ]
 
 
 def new_simulation_run():
