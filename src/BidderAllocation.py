@@ -43,7 +43,8 @@ class PyTorchLogisticRegressionAllocator(Allocator):
 
         X, A, y = torch.Tensor(X), torch.LongTensor(A), torch.Tensor(y)
         losses = []
-        for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        #for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        for epoch in range(int(epochs)):
             optimizer.zero_grad()  # Setting our stored gradients equal to zero
             loss = self.response_model.loss(torch.squeeze(self.response_model.predict_item(X, A)), y)
             loss.backward()  # Computes the gradient of the given tensor w.r.t. the weights/bias

@@ -117,7 +117,8 @@ class BidShadingContextualBandit(torch.nn.Module):
         criterion = torch.nn.MSELoss()
         losses = []
         best_epoch, best_loss = -1, np.inf
-        for epoch in tqdm(range(int(epochs)), desc=f'Initialising Policy'):
+        # for epoch in tqdm(range(int(epochs)), desc=f'Initialising Policy'):
+        for epoch in range(int(epochs)):
             optimizer.zero_grad()  # Setting our stored gradients equal to zero
             predicted_mu_gammas = torch.nn.Softplus()(self.mu_linear_out(torch.nn.Softplus()(self.shared_linear(observed_contexts))))
             predicted_sigma_gammas = torch.nn.Softplus()(self.sigma_linear_out(torch.nn.Softplus()(self.shared_linear(observed_contexts))))
@@ -132,16 +133,16 @@ class BidShadingContextualBandit(torch.nn.Module):
                 print(f'Stopping at Epoch {epoch}')
                 break
 
-        fig, ax = plt.subplots()
-        plt.title(f'Initialising policy')
-        plt.plot(losses, label=r'Loss')
-        plt.ylabel('MSE with logging policy')
-        plt.legend()
-        fig.set_tight_layout(True)
-        #plt.show()
+        # fig, ax = plt.subplots()
+        # plt.title(f'Initialising policy')
+        # plt.plot(losses, label=r'Loss')
+        # plt.ylabel('MSE with logging policy')
+        # plt.legend()
+        # fig.set_tight_layout(True)
+        # plt.show()
 
-        print('Predicted mu Gammas: ', predicted_mu_gammas.min(), predicted_mu_gammas.max(), predicted_mu_gammas.mean())
-        print('Predicted sigma Gammas: ', predicted_sigma_gammas.min(), predicted_sigma_gammas.max(), predicted_sigma_gammas.mean())
+        # print('Predicted mu Gammas: ', predicted_mu_gammas.min(), predicted_mu_gammas.max(), predicted_mu_gammas.mean())
+        # print('Predicted sigma Gammas: ', predicted_sigma_gammas.min(), predicted_sigma_gammas.max(), predicted_sigma_gammas.mean())
 
     def forward(self, x):
         x = self.shared_linear(x)

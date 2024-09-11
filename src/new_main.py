@@ -124,6 +124,10 @@ def instantiate_publishers(rng, publisher_configs):
     ]
 
 
+def logistic_fun(x, k=1, x0=0):
+    return 1.0 / (1.0 + np.exp(-k * (x - x0)))
+
+
 def add_noise(user_embedding, noise_strength):
     noise = np.random.normal(0, noise_strength, user_embedding.shape)
     return user_embedding + noise
