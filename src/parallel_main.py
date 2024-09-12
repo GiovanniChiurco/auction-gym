@@ -33,11 +33,12 @@ def measure_per_agent2df_one_run(agent2measure: defaultdict, measure_name, run):
 def run_iteration(auction, num_iter, publishers, agents2items, run, output_dir):
     agent2net_utility = defaultdict(list)
     agent2gross_utility = defaultdict(list)
+    agent2spent = defaultdict(list)
 
     auction_revenue = []
 
     with open(f'{output_dir}/run_{run}.csv', 'a') as f:
-        f.write('Run,Iteration,Agent,Net Utility,Gross Utility\n')
+        f.write('Run,Iteration,Agent,Net Utility,Gross Utility,Spending\n')
 
         for i in range(num_iter):
 
@@ -79,8 +80,9 @@ def run_iteration(auction, num_iter, publishers, agents2items, run, output_dir):
 
                 agent2net_utility[agent.name].append(agent.net_utility)
                 agent2gross_utility[agent.name].append(agent.gross_utility)
+                agent2spent[agent.name].append(agent.spending)
                 # Salvare i risultati su file
-                f.write(f'{run},{i},{agent.name},{agent.net_utility},{agent.gross_utility}\n')
+                f.write(f'{run},{i},{agent.name},{agent.net_utility},{agent.gross_utility},{agent.spending}\n')
                 f.flush()
 
                 agent.clear_utility()
@@ -91,7 +93,7 @@ def run_iteration(auction, num_iter, publishers, agents2items, run, output_dir):
 
             print(f'[Run {run} - Iteration {i}]: Finished iteration {i} in {time.time() - gen_auction_time} seconds')
 
-    return agent2net_utility, agent2gross_utility, auction_revenue
+    return agent2net_utility, agent2gross_utility, agent2spent, auction_revenue
 
 
 def run_experiment(run, rng, agent_configs, agents2item_values, agents2items, config, max_slots, publisher_configs):
@@ -104,8 +106,8 @@ def run_experiment(run, rng, agent_configs, agents2item_values, agents2items, co
 
     curr_iter_time = time.time()
 
-    agent2net_utility, agent2gross_utility, auction_revenue = run_iteration(auction, num_iter, publishers,
-                                                                            agents2items, run, output_dir)
+    agent2net_utility, agent2gross_utility, agent2spent, auction_revenue = run_iteration(auction, num_iter, publishers,
+                                                                                         agents2items, run, output_dir)
 
     print(f'Finished experiment {run} in {time.time() - curr_iter_time} seconds')
 
@@ -115,7 +117,7 @@ def run_experiment(run, rng, agent_configs, agents2item_values, agents2items, co
     net_utility_df.to_csv(f'{output_dir}/net_utility_{num_iter}_iters_{run}_run.csv', index=False)
 
     return {'run': run, 'agent2net_utility': agent2net_utility, 'agent2gross_utility': agent2gross_utility,
-            'auction_revenue': auction_revenue}
+            'agent2spent': agent2spent, 'auction_revenue': auction_revenue}
 
 
 if __name__ == '__main__':
@@ -131,6 +133,7 @@ if __name__ == '__main__':
     # Placeholders for summary statistics over all runs
     run2agent2net_utility = {}
     run2agent2gross_utility = {}
+    run2agent2spent = {}
 
     run2auction_revenue = {}
 
@@ -149,6 +152,7 @@ if __name__ == '__main__':
             run2agent2net_utility[run] = result['agent2net_utility']
             run2agent2gross_utility[run] = result['agent2gross_utility']
             run2auction_revenue[run] = result['auction_revenue']
+            run2agent2spent[run] = result['agent2spent']
 
     num_iter = config['num_iter']
     net_utility_df = measure_per_agent2df(
