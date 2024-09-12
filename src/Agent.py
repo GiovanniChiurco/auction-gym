@@ -18,6 +18,8 @@ class Agent:
 
         self.net_utility = .0
         self.gross_utility = .0
+        # Spending
+        self.spending = .0
 
         self.logs = []
 
@@ -72,6 +74,7 @@ class Agent:
         last_value = self.logs[-1].value * outcome
         self.net_utility += (last_value - price)
         self.gross_utility += last_value
+        self.spending += price
 
     def set_price(self, price):
         self.logs[-1].set_price(price)
@@ -120,6 +123,7 @@ class Agent:
     def clear_utility(self):
         self.net_utility = .0
         self.gross_utility = .0
+        self.spending = .0
 
     def clear_logs(self):
         if not self.memory:

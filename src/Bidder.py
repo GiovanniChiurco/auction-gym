@@ -240,7 +240,7 @@ class ValueLearningBidder(Bidder):
         epochs = 8192 * 4
         lr = 3e-3
         optimizer = torch.optim.Adam(self.winrate_model.parameters(), lr=lr, weight_decay=1e-6, amsgrad=True)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, min_lr=1e-7, factor=0.1, verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, min_lr=1e-7, factor=0.1)
         criterion = torch.nn.BCELoss()
         losses = []
         best_epoch, best_loss = -1, np.inf
@@ -256,7 +256,7 @@ class ValueLearningBidder(Bidder):
                 best_epoch = epoch
                 best_loss = losses[-1]
             elif epoch - best_epoch > 512:
-                print(f'Stopping at Epoch {epoch}')
+                # print(f'Stopping at Epoch {epoch}')
                 break
 
         losses = np.array(losses)
@@ -273,7 +273,7 @@ class ValueLearningBidder(Bidder):
         # Predict Utility -- \hat{u}
         orig_features = torch.Tensor(np.hstack((estimated_CTRs.reshape(-1,1), values.reshape(-1,1), np.array(self.gammas).reshape(-1, 1))))
         W = self.winrate_model(orig_features).squeeze().detach().numpy()
-        print('AUC predicting P(win):\t\t\t\t', roc_auc_score(won_mask.astype(np.uint8), W))
+        # print('AUC predicting P(win):\t\t\t\t', roc_auc_score(won_mask.astype(np.uint8), W))
 
         if self.inference == 'policy':
             # Learn a policy to maximise E[U | bid] where bid ~ policy
@@ -283,10 +283,11 @@ class ValueLearningBidder(Bidder):
             epochs = 8192 * 2
             lr = 2e-3
             optimizer = torch.optim.Adam(self.bidding_policy.parameters(), lr=lr, weight_decay=1e-6, amsgrad=True)
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, min_lr=1e-7, factor=0.1, verbose=True)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, min_lr=1e-7, factor=0.1)
             losses = []
             best_epoch, best_loss = -1, np.inf
-            for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+            # for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+            for epoch in range(int(epochs)):
                 optimizer.zero_grad()
                 # Sample bid shading values
                 sampled_gamma, propensities = self.bidding_policy(X)
@@ -309,7 +310,7 @@ class ValueLearningBidder(Bidder):
                     best_epoch = epoch
                     best_loss = losses[-1]
                 elif epoch - best_epoch > 256:
-                    print(f'Stopping at Epoch {epoch}')
+                    # print(f'Stopping at Epoch {epoch}')
                     break
 
             losses = np.array(losses)
@@ -389,11 +390,12 @@ class PolicyLearningBidder(Bidder):
         epochs = 8192 * 2
         lr = 2e-3
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-4, amsgrad=True)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, min_lr=1e-8, factor=0.2, verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, min_lr=1e-8, factor=0.2)
 
         losses = []
         best_epoch, best_loss = -1, np.inf
-        for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        # for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        for epoch in range(int(epochs)):
             optimizer.zero_grad()  # Setting our stored gradients equal to zero
             loss = self.model.loss(X, gammas, propensities, utilities, importance_weight_clipping_eps=50.0)
             loss.backward()  # Computes the gradient of the given tensor w.r.t. the weights/bias
@@ -405,7 +407,7 @@ class PolicyLearningBidder(Bidder):
                 best_epoch = epoch
                 best_loss = losses[-1]
             elif epoch - best_epoch > 512:
-                print(f'Stopping at Epoch {epoch}')
+                # print(f'Stopping at Epoch {epoch}')
                 break
 
         losses = np.array(losses)
@@ -420,12 +422,12 @@ class PolicyLearningBidder(Bidder):
 
         self.model.eval()
         expected_utility = -self.model.loss(X, gammas, propensities, utilities, KL_weight=0.0).detach().numpy()
-        print('Expected utility:', expected_utility)
+        # print('Expected utility:', expected_utility)
 
         pred_gammas, _ = self.model(X)
         pred_gammas = pred_gammas.detach().numpy()
-        print(name, 'Number of samples: ', X.shape)
-        print(name, 'Predicted Gammas: ', pred_gammas.min(), pred_gammas.max(), pred_gammas.mean())
+        # print(name, 'Number of samples: ', X.shape)
+        # print(name, 'Predicted Gammas: ', pred_gammas.min(), pred_gammas.max(), pred_gammas.mean())
 
         self.model_initialised = True
         self.model.model_initialised = True
@@ -488,15 +490,15 @@ class DoublyRobustBidder(Bidder):
             # Predict Utility -- \hat{u}
             orig_features = torch.Tensor(np.hstack((estimated_CTRs.reshape(-1,1), values.reshape(-1,1), gammas_numpy.reshape(-1, 1))))
             W = self.winrate_model(orig_features).squeeze().detach().numpy()
-            print('AUC predicting P(win):\t\t\t\t', roc_auc_score(won_mask.astype(np.uint8), W))
+            # print('AUC predicting P(win):\t\t\t\t', roc_auc_score(won_mask.astype(np.uint8), W))
 
             V = estimated_CTRs * values
             P = estimated_CTRs * values * gammas_numpy
             estimated_utilities = W * (V - P)
 
             errors = estimated_utilities - utilities
-            print('Estimated Utility\t Mean Error:\t\t\t', errors.mean())
-            print('Estimated Utility\t Mean Absolute Error:\t', np.abs(errors).mean())
+            # print('Estimated Utility\t Mean Error:\t\t\t', errors.mean())
+            # print('Estimated Utility\t Mean Absolute Error:\t', np.abs(errors).mean())
 
         # Augment data with samples: if you shade 100%, you will lose
         # If you won now, you would have also won if you bid higher
@@ -518,11 +520,12 @@ class DoublyRobustBidder(Bidder):
         epochs = 8192 * 4
         lr = 3e-3
         optimizer = torch.optim.Adam(self.winrate_model.parameters(), lr=lr, weight_decay=1e-6, amsgrad=True)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=256, min_lr=1e-7, factor=0.2, verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=256, min_lr=1e-7, factor=0.2)
         criterion = torch.nn.BCELoss()
         losses = []
         best_epoch, best_loss = -1, np.inf
-        for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        # for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        for epoch in range(int(epochs)):
             optimizer.zero_grad()
             pred_y = self.winrate_model(X)
             loss = criterion(pred_y, y)
@@ -544,15 +547,15 @@ class DoublyRobustBidder(Bidder):
         # Predict Utility -- \hat{u}
         orig_features = torch.Tensor(np.hstack((estimated_CTRs.reshape(-1,1), values.reshape(-1,1), gammas_numpy.reshape(-1, 1))))
         W = self.winrate_model(orig_features).squeeze().detach().numpy()
-        print('AUC predicting P(win):\t\t\t\t', roc_auc_score(won_mask.astype(np.uint8), W))
+        # print('AUC predicting P(win):\t\t\t\t', roc_auc_score(won_mask.astype(np.uint8), W))
 
         V = estimated_CTRs * values
         P = estimated_CTRs * values * gammas_numpy
         estimated_utilities = W * (V - P)
 
         errors = estimated_utilities - utilities
-        print('Estimated Utility\t Mean Error:\t\t\t', errors.mean())
-        print('Estimated Utility\t Mean Absolute Error:\t', np.abs(errors).mean())
+        # print('Estimated Utility\t Mean Error:\t\t\t', errors.mean())
+        # print('Estimated Utility\t Mean Absolute Error:\t', np.abs(errors).mean())
 
         ##############################
         # 2. TRAIN DOUBLY ROBUST POLICY #
@@ -575,11 +578,12 @@ class DoublyRobustBidder(Bidder):
         epochs = 8192 * 4
         lr = 7e-3
         optimizer = torch.optim.Adam(self.bidding_policy.parameters(), lr=lr, weight_decay=1e-4, amsgrad=True)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, min_lr=1e-8, factor=0.2, threshold=5e-3, verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, min_lr=1e-8, factor=0.2, threshold=5e-3)
 
         losses = []
         best_epoch, best_loss = -1, np.inf
-        for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        # for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        for epoch in range(int(epochs)):
             optimizer.zero_grad()  # Setting our stored gradients equal to zero
             loss = self.bidding_policy.loss(X, gammas, propensities, utilities, utility_estimates=estimated_utilities, winrate_model=self.winrate_model, importance_weight_clipping_eps=50.0)
             loss.backward()  # Computes the gradient of the given tensor w.r.t. the weights/bias
@@ -591,7 +595,7 @@ class DoublyRobustBidder(Bidder):
                 best_epoch = epoch
                 best_loss = losses[-1]
             elif epoch - best_epoch > 512:
-                print(f'Stopping at Epoch {epoch}')
+                # print(f'Stopping at Epoch {epoch}')
                 break
 
         losses = np.array(losses)
@@ -608,8 +612,8 @@ class DoublyRobustBidder(Bidder):
 
         pred_gammas, _ = self.bidding_policy(X)
         pred_gammas = pred_gammas.detach().numpy()
-        print(name, 'Number of samples: ', X.shape)
-        print(name, 'Predicted Gammas: ', pred_gammas.min(), pred_gammas.max(), pred_gammas.mean())
+        # print(name, 'Number of samples: ', X.shape)
+        # print(name, 'Predicted Gammas: ', pred_gammas.min(), pred_gammas.max(), pred_gammas.mean())
 
         self.model_initialised = True
         self.bidding_policy.model_initialised = True
