@@ -1,0 +1,57 @@
+{
+  "random_seed": 0,
+  "num_runs": 100,
+  "num_iter" : 1000,
+  "rounds_per_iter": 10000,
+  "num_participants_per_round": 2,
+  "embedding_size": 5,
+  "embedding_var": 1.0,
+  "obs_embedding_size": 5,
+  "allocation": "FirstPrice",
+  "agents": [
+    {
+      "name": "Oracle, DM",
+      "num_copies": 1,
+      "num_items": 1,
+        "allocator": {
+          "type": "OracleAllocator",
+          "kwargs": {}
+        },
+        "bidder": {
+          "type": "ValueLearningBidder",
+          "kwargs": {
+            "gamma_sigma":  0.02,
+            "init_gamma": 1.0,
+            "inference": "\"policy\""
+          }
+        }
+    },
+    {
+      "name": "Oracle, Random Bidder",
+      "num_copies": 1,
+      "num_items": 1,
+        "allocator": {
+          "type": "OracleAllocator",
+          "kwargs": {}
+        },
+        "bidder": {
+          "type": "RandomBidder",
+          "kwargs": {}
+        }
+    },
+    {
+      "name": "Oracle, Truthful Bidder",
+      "num_copies": 1,
+      "num_items": 1,
+        "allocator": {
+          "type": "OracleAllocator",
+          "kwargs": {}
+        },
+        "bidder": {
+          "type": "TruthfulBidder",
+          "kwargs": {}
+        }
+    }
+  ],
+  "output_dir": "results/FP_DM_vs_Random_vs_Truthful_bidder_allOracleAllocator/"
+}

@@ -55,6 +55,21 @@ def parse_config(path):
             agent_configs.append(agent_config)
             num_agents += 1
 
+    # Same item embeddings for all agents
+    # item_embedding = rng.normal(0.0, embedding_var, size=(1, embedding_size))
+    # item_embedding = np.hstack((item_embedding, - 3.0 - 1.0 * rng.random((item_embedding.shape[0], 1))))
+    # item_value = rng.lognormal(0.1, 0.2, 1)
+    #
+    # agents2items = {
+    #     agent_config['name']: item_embedding
+    #     for agent_config in agent_configs
+    # }
+    #
+    # agents2item_values = {
+    #     agent_config['name']: item_value
+    #     for agent_config in agent_configs
+    # }
+
     # First sample item catalog (so it is consistent over different configs with the same seed)
     # Agent : (item_embedding, item_value)
     agents2items = {

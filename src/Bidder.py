@@ -25,6 +25,15 @@ class Bidder:
         pass
 
 
+class RandomBidder(Bidder):
+    """ A bidder that bids randomly """
+    def __init__(self, rng):
+        super(RandomBidder, self).__init__(rng)
+
+    def bid(self, value, context, estimated_CTR):
+        return self.rng.uniform(0, 0.2)
+
+
 class TruthfulBidder(Bidder):
     """ A bidder that bids truthfully """
     def __init__(self, rng):
@@ -244,7 +253,8 @@ class ValueLearningBidder(Bidder):
         criterion = torch.nn.BCELoss()
         losses = []
         best_epoch, best_loss = -1, np.inf
-        for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        # for epoch in tqdm(range(int(epochs)), desc=f'{name}'):
+        for epoch in range(int(epochs)):
             optimizer.zero_grad()
             pred_y = self.winrate_model(X)
             loss = criterion(pred_y, y)
@@ -262,12 +272,12 @@ class ValueLearningBidder(Bidder):
         losses = np.array(losses)
 
         self.winrate_model.eval()
-        fig, ax = plt.subplots()
-        plt.title(f'{name}')
-        plt.plot(losses, label=r'P(win|$gamma$,x)')
-        plt.ylabel('Loss')
-        plt.legend()
-        fig.set_tight_layout(True)
+        # fig, ax = plt.subplots()
+        # plt.title(f'{name}')
+        # plt.plot(losses, label=r'P(win|$gamma$,x)')
+        # plt.ylabel('Loss')
+        # plt.legend()
+        # fig.set_tight_layout(True)
         # plt.show()
 
         # Predict Utility -- \hat{u}
