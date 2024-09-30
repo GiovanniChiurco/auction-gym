@@ -25,15 +25,18 @@ class Auction:
 
         self.num_participants_per_round = num_participants_per_round
 
-    def simulate_opportunity(self):
+    def simulate_opportunity(self, publisher_name: str, context: np.ndarray, agents_publishers_similarity: dict, round_num: int):
         # Sample the number of slots uniformly between [1, max_slots]
         num_slots = self.rng.integers(1, self.max_slots + 1)
 
+        true_context = context
+        obs_context = context
+
         # Sample a true context vector
-        true_context = np.concatenate((self.rng.normal(0, self.embedding_var, size=self.embedding_size), [1.0]))
+        # true_context = np.concatenate((self.rng.normal(0, self.embedding_var, size=self.embedding_size), [1.0]))
 
         # Mask true context into observable context
-        obs_context = np.concatenate((true_context[:self.obs_embedding_size], [1.0]))
+        # obs_context = np.concatenate((true_context[:self.obs_embedding_size], [1.0]))
 
         # At this point, the auctioneer solicits bids from
         # the list of bidders that might want to compete.
@@ -42,14 +45,16 @@ class Auction:
         participating_agents_idx = self.rng.choice(len(self.agents), self.num_participants_per_round, replace=False)
         participating_agents = [self.agents[idx] for idx in participating_agents_idx]
         for agent in participating_agents:
+            cos_sim = agents_publishers_similarity[agent.name][publisher_name][0]
             # Get the bid and the allocated item
             if isinstance(agent.allocator, OracleAllocator):
-                bid, item = agent.bid(true_context)
+                bid, item = agent.bid(true_context, publisher_name, cos_sim)
             else:
-                bid, item = agent.bid(obs_context)
+                bid, item = agent.bid(obs_context, publisher_name, cos_sim)
             bids.append(bid)
             # Compute the true CTRs for items in this agent's catalogue
-            true_CTR = sigmoid(true_context @ self.agent2items[agent.name].T)
+            # true_CTR = sigmoid(true_context @ self.agent2items[agent.name].T)
+            true_CTR = cos_sim
             agent.logs[-1].set_true_CTR(np.max(true_CTR * self.agents2item_values[agent.name]), true_CTR[item])
             CTRs.append(true_CTR[item])
         bids = np.array(bids)

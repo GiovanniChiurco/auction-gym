@@ -8,9 +8,11 @@ from Models import sigmoid
 class Agent:
     ''' An agent representing an advertiser '''
 
-    def __init__(self, rng, name, num_items, item_values, allocator, bidder, memory=0):
+    def __init__(self, rng, name, adv_name, num_items, item_values, allocator, bidder, memory=0):
         self.rng = rng
         self.name = name
+        # Advertisement name to pick the embeddings
+        self.adv_name = adv_name
         self.num_items = num_items
 
         # Value distribution
@@ -26,9 +28,10 @@ class Agent:
 
         self.memory = memory
 
-    def select_item(self, context):
+    def select_item(self, context, precomputed_cos_sim=None):
         # Estimate CTR for all items
-        estim_CTRs = self.allocator.estimate_CTR(context)
+        # estim_CTRs = self.allocator.estimate_CTR(context)
+        estim_CTRs = precomputed_cos_sim
         # Compute value if clicked
         estim_values = estim_CTRs * self.item_values
         # Pick the best item (according to TS)
@@ -41,9 +44,9 @@ class Agent:
 
         return best_item, estim_CTRs[best_item]
 
-    def bid(self, context):
+    def bid(self, context: np.ndarray, publisher_name: str, precomputed_cos_sim: float):
         # First, pick what item we want to choose
-        best_item, estimated_CTR = self.select_item(context)
+        best_item, estimated_CTR = self.select_item(context, precomputed_cos_sim)
 
         # Sample value for this item
         value = self.item_values[best_item]
@@ -63,7 +66,8 @@ class Agent:
                                                price=0.0,
                                                second_price=0.0,
                                                outcome=0,
-                                               won=False))
+                                               won=False,
+                                               publisher=publisher_name))
 
         return bid, best_item
 
@@ -116,6 +120,81 @@ class Agent:
 
     def get_CTR_bias(self):
         return np.mean(list((opp.estimated_CTR / opp.true_CTR) for opp in filter(lambda opp: opp.won, self.logs)))
+
+    def iteration_stats_per_publisher(self):
+        publishers = list(set(opp.publisher for opp in self.logs))
+        publishers_data = []
+        for publisher in publishers:
+            publisher_logs = [opp for opp in self.logs if opp.publisher == publisher]
+
+            publisher_won_logs = [opp for opp in publisher_logs if opp.won]
+            publisher_lost_logs = [opp for opp in publisher_logs if not opp.won]
+
+            publisher_won_auctions = len(publisher_won_logs)
+            publisher_lost_auctions = len(publisher_lost_logs)
+            win_rate = publisher_won_auctions / (publisher_won_auctions + publisher_lost_auctions)
+            num_clicks = np.sum([opp.outcome for opp in publisher_won_logs])
+            ctr = (num_clicks / publisher_won_auctions) * 100 if publisher_won_auctions > 0 else 0
+            spent = np.sum([opp.price for opp in publisher_won_logs])
+            mean_bid = np.mean([opp.bid for opp in publisher_won_logs]) if publisher_won_logs else 0
+            cpc = spent / num_clicks if num_clicks > 0.0 else 0
+            cpm = (spent / publisher_won_auctions) * 1000 if publisher_won_auctions > 0 else 0
+
+            publishers_data.append({
+                'publisher': publisher,
+                'won_auctions': publisher_won_auctions,
+                'lost_auctions': publisher_lost_auctions,
+                'win_rate': win_rate,
+                'num_clicks': num_clicks,
+                'ctr': ctr,
+                'spent': spent,
+                'mean_bid': mean_bid,
+                'cpc': cpc,
+                'cpm': cpm
+            })
+        return publishers_data
+
+    # def iteration_stats_per_publisher(self):
+    #     publishers = list(set(opp.publisher for opp in self.logs))
+    #     publishers_data = []
+    #     for publisher in publishers:
+    #         publisher_logs = [opp for opp in self.logs if opp.publisher == publisher]
+    #
+    #         publisher_won_logs = [opp for opp in publisher_logs if opp.won]
+    #         publisher_lost_logs = [opp for opp in publisher_logs if not opp.won]
+    #
+    #         publisher_won_logs_count = len(publisher_won_logs)
+    #         publisher_lost_logs_count = len(publisher_lost_logs)
+    #         publisher_won_logs_outcome = np.sum([opp.outcome for opp in publisher_won_logs])
+    #         publisher_won_logs_ctr = np.mean([opp.true_CTR for opp in publisher_won_logs])
+    #         publisher_lost_logs_ctr = np.mean([opp.true_CTR for opp in publisher_lost_logs])
+    #         publisher_won_logs_estimated_ctr = np.mean([opp.estimated_CTR for opp in publisher_won_logs])
+    #         publisher_lost_logs_estimated_ctr = np.mean([opp.estimated_CTR for opp in publisher_lost_logs])
+    #         publisher_won_logs_bid = np.mean([opp.bid for opp in publisher_won_logs])
+    #         publisher_lost_logs_bid = np.mean([opp.bid for opp in publisher_lost_logs])
+    #         publisher_won_logs_price = np.mean([opp.price for opp in publisher_won_logs])
+    #         publisher_lost_logs_price = np.mean([opp.price for opp in publisher_lost_logs])
+    #
+    #         publishers_data.append({
+    #             'publisher': publisher,
+    #             'won_auctions': publisher_won_logs_count,
+    #             'lost_auctions': publisher_lost_logs_count,
+    #             'win_ratio': publisher_won_logs_count / (publisher_won_logs_count + publisher_lost_logs_count),
+    #             'num_clicks': int(publisher_won_logs_outcome),
+    #             'won_true_CTR': publisher_won_logs_ctr,
+    #             'lost_true_CTR': publisher_lost_logs_ctr,
+    #             'won_estimated_CTR': publisher_won_logs_estimated_ctr,
+    #             'lost_estimated_CTR': publisher_lost_logs_estimated_ctr,
+    #             'mean_won_bid': publisher_won_logs_bid,
+    #             'mean_lost_bid': publisher_lost_logs_bid,
+    #             'mean_won_price': publisher_won_logs_price,
+    #             'mean_lost_price': publisher_lost_logs_price,
+    #             'spent': self.spending
+    #         })
+    #     return publishers_data
+
+    def get_publisher_clicks(self, publisher: str):
+        return np.sum([opp.outcome for opp in self.logs if opp.publisher == publisher])
 
     def clear_utility(self):
         self.net_utility = .0
