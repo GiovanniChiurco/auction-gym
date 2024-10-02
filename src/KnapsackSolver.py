@@ -3,15 +3,29 @@ from ortools.linear_solver import pywraplp
 import numpy as np
 
 
+# def get_data(
+#         df: pd.DataFrame,
+# ):
+#     # Estraggo i dati dal dataframe
+#     n = df.shape[0]
+#     clicks = df['num_clicks'].values
+#     rew_ucb = df['rew_ucb'].values
+#     spent = df['spent'].values
+#     cpc = df['cpc'].values
+#     return n, clicks, rew_ucb, spent, cpc
+
 def get_data(
         df: pd.DataFrame,
 ):
+    df_copy = df.copy()
+    # Aggiungo una penalità per le righe con spent = 0
+    df_copy['new_spent'] = df_copy.apply(lambda x: np.exp(-0.1 * x['rew_ucb']) if x['spent'] == 0 else x['spent'], axis=1)
     # Estraggo i dati dal dataframe
-    n = df.shape[0]
-    clicks = df['num_clicks'].values
-    rew_ucb = df['rew_ucb'].values
-    spent = df['spent'].values
-    cpc = df['cpc'].values
+    n = df_copy.shape[0]
+    clicks = df_copy['num_clicks'].values
+    rew_ucb = df_copy['rew_ucb'].values
+    spent = df_copy['new_spent'].values
+    cpc = df_copy['cpc'].values
     return n, clicks, rew_ucb, spent, cpc
 
 def solver(

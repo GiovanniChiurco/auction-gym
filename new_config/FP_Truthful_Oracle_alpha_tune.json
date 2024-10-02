@@ -8,6 +8,9 @@
   "embedding_var": 1.0,
   "obs_embedding_size": 10,
   "allocation": "FirstPrice",
+  "knapsack_params": {
+    "soglia_spent": 100
+  },
   "agents": [
     {
       "name": "Nostro",
@@ -108,7 +111,7 @@
       }
     }
   ],
-  "output_dir": "results/FP_Truthful_Oracle/",
-  "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/ad_embeddings_10dim.pkl",
-  "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/sites_embeddings_10dim.pkl"
+  "output_dir": "results/FP_Truthful_Oracle_alpha_tune/",
+  "adv_embedding_path": "publisher_embedding/data/embeddings_to_pick/ad_embeddings_10dim.pkl",
+  "publisher_embedding_path": "publisher_embedding/data/embeddings_to_pick/sites_embeddings_10dim.pkl"
 }

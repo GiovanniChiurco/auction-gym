@@ -88,9 +88,11 @@ def parse_config(path):
     }
     publisher_embeddings_path = config['publisher_embedding_path']
     publisher_embeddings = pickle.load(open(publisher_embeddings_path, 'rb'))
+    # Knapsack parameters
+    knapsack_params = config['knapsack_params']
 
     return (rng, config, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size,
-            embedding_var, obs_embedding_size, adv_embeddings, publisher_embeddings)
+            embedding_var, obs_embedding_size, adv_embeddings, publisher_embeddings, knapsack_params)
 
 
 def instantiate_agents(rng, agent_configs, agents2item_values, agents2items):
@@ -171,15 +173,17 @@ def initialize_deal(publisher_list: List[Publisher], publisher_emb, round_per_it
 def simulation_run():
     # Choose 300 publishers at random
     rng.shuffle(publishers)
-    publisher_list = publishers[:300]
-    comb_linucb = CombinatorialLinUCB(alpha=0.1, d=embedding_size, publisher_list=publisher_list)
+    init_publisher_list = publishers[:300]
+    comb_linucb = CombinatorialLinUCB(alpha=1, d=embedding_size, publisher_list=init_publisher_list)
     for i in range(num_iter):
         print(f'==== ITERATION {i} ====')
         if i > 1:
             # After the first two iterations, run Combinatorial LinUCB to change the publisher list
             start_comb_linucb = time.time()
-            publisher_list = comb_linucb.round_iteration(publisher_list, iteration=i)
+            publisher_list = comb_linucb.round_iteration(init_publisher_list, iteration=i, soglia_spent=soglia_spent, soglia_clicks=soglia_clicks, soglia_cpc=soglia_cpc)
             print(f'Combinatorial LinUCB took {time.time() - start_comb_linucb} seconds')
+        else:
+            publisher_list = init_publisher_list
         start_comp_sim = time.time()
         # Compute all agents' similarity with all publishers
         user_contexts, agents_publishers_similarity = initialize_deal(
@@ -266,7 +270,7 @@ def simulation_run():
     linucb_params = comb_linucb.linucb_params
     linucb_params['Run'] = run
     # Merge with previously saved parameters
-    agent_df = pd.read_csv(filename, usecols=['publisher', 'num_clicks', 'Iteration'])
+    agent_df = pd.read_csv(filename, usecols=['publisher', 'num_clicks', 'Iteration', 'spent'])
     merged_df = pd.merge(
         agent_df,
         linucb_params,
@@ -282,7 +286,17 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Parse configuration file
-    rng, config, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size, embedding_var, obs_embedding_size, adv_embeddings, publisher_embeddings = parse_config(args.config)
+    rng, config, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size, embedding_var, obs_embedding_size, adv_embeddings, publisher_embeddings, knapsack_params = parse_config(args.config)
+    # Instantiate knapsack parameters
+    soglia_clicks = None
+    soglia_spent = None
+    soglia_cpc = None
+    if 'soglia_clicks' in knapsack_params:
+        soglia_clicks = knapsack_params['soglia_clicks']
+    if 'soglia_spent' in knapsack_params:
+        soglia_spent = knapsack_params['soglia_spent']
+    if 'soglia_cpc' in knapsack_params:
+        soglia_cpc = knapsack_params['soglia_cpc']
 
     # Plotting config
     FIGSIZE = (8, 5)
@@ -329,8 +343,10 @@ if __name__ == '__main__':
 
         auction_revenue = []
 
+        start_run = time.time()
         # Run simulation (with global parameters -- fine for the purposes of this script)
         simulation_run()
+        print(f'Run {run} took {time.time() - start_run} seconds')
 
         # Store
         run2agent2net_utility[run] = agent2net_utility

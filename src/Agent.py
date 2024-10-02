@@ -135,6 +135,7 @@ class Agent:
             win_rate = publisher_won_auctions / (publisher_won_auctions + publisher_lost_auctions)
             num_clicks = np.sum([opp.outcome for opp in publisher_won_logs])
             ctr = (num_clicks / publisher_won_auctions) * 100 if publisher_won_auctions > 0 else 0
+            true_ctr = np.mean([opp.true_CTR for opp in publisher_won_logs]) if publisher_won_logs else 0
             spent = np.sum([opp.price for opp in publisher_won_logs])
             mean_bid = np.mean([opp.bid for opp in publisher_won_logs]) if publisher_won_logs else 0
             cpc = spent / num_clicks if num_clicks > 0.0 else 0
@@ -147,6 +148,7 @@ class Agent:
                 'win_rate': win_rate,
                 'num_clicks': num_clicks,
                 'ctr': ctr,
+                'true_ctr': true_ctr,
                 'spent': spent,
                 'mean_bid': mean_bid,
                 'cpc': cpc,

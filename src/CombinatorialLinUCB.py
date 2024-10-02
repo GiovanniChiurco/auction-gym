@@ -58,7 +58,8 @@ class CombinatorialLinUCB:
         #     }, index=[0])
         # ], ignore_index=True)
 
-    def round_iteration(self, publisher_list: List[Publisher], iteration: int):
+    def round_iteration(self, publisher_list: List[Publisher], iteration: int,
+                        soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None):
         # Check if there are new arms (= new publishers in the list)
         for publisher in publisher_list:
             if not self.check_publisher_exist(publisher):
@@ -66,8 +67,8 @@ class CombinatorialLinUCB:
             # Update arms parameters
             self.update_arm(publisher=publisher, iteration=iteration)
         # Select the super-arm
-        # TODO: il parametro publisher_list dovrei passarlo come parametro della funzione solver?
-        super_arm = self.knapsack_solver(soglia_spent=300)
+        # il parametro publisher_list non viene passato al solver perché i dati necessari sono già presenti nel dataframe iteration_stats
+        super_arm = self.knapsack_solver(soglia_spent=soglia_spent, soglia_clicks=soglia_clicks, soglia_cpc=soglia_cpc)
         # Return the super-arm
         return super_arm
 
