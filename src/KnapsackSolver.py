@@ -3,30 +3,30 @@ from ortools.linear_solver import pywraplp
 import numpy as np
 
 
-# def get_data(
-#         df: pd.DataFrame,
-# ):
-#     # Estraggo i dati dal dataframe
-#     n = df.shape[0]
-#     clicks = df['num_clicks'].values
-#     rew_ucb = df['rew_ucb'].values
-#     spent = df['spent'].values
-#     cpc = df['cpc'].values
-#     return n, clicks, rew_ucb, spent, cpc
-
 def get_data(
         df: pd.DataFrame,
 ):
-    df_copy = df.copy()
-    # Aggiungo una penalità per le righe con spent = 0
-    df_copy['new_spent'] = df_copy.apply(lambda x: np.exp(-0.1 * x['rew_ucb']) if x['spent'] == 0 else x['spent'], axis=1)
     # Estraggo i dati dal dataframe
-    n = df_copy.shape[0]
-    clicks = df_copy['num_clicks'].values
-    rew_ucb = df_copy['rew_ucb'].values
-    spent = df_copy['new_spent'].values
-    cpc = df_copy['cpc'].values
+    n = df.shape[0]
+    clicks = df['clicks'].values
+    rew_ucb = df['rew_ucb'].values
+    spent = df['spent'].values
+    cpc = df['cpc'].values
     return n, clicks, rew_ucb, spent, cpc
+
+# def get_data(
+#         df: pd.DataFrame,
+# ):
+#     df_copy = df.copy()
+#     # Aggiungo una penalità per le righe con spent = 0
+#     df_copy['new_spent'] = df_copy.apply(lambda x: np.exp(-0.1 * x['rew_ucb']) if x['spent'] == 0 else x['spent'], axis=1)
+#     # Estraggo i dati dal dataframe
+#     n = df_copy.shape[0]
+#     clicks = df_copy['clicks'].values
+#     rew_ucb = df_copy['rew_ucb'].values
+#     spent = df_copy['new_spent'].values
+#     cpc = df_copy['cpc'].values
+#     return n, clicks, rew_ucb, spent, cpc
 
 def solver(
         df: pd.DataFrame,
@@ -38,6 +38,7 @@ def solver(
         soglia_spent: float = None,
         soglia_clicks: float = None,
         soglia_cpc: float = None,
+        soglia_num_publisher: int = None,
 ):
     # Inizializzo il solver
     solver = pywraplp.Solver.CreateSolver('SCIP')
@@ -55,6 +56,9 @@ def solver(
     if soglia_cpc is not None:
         # Vincolo CPC
         solver.Add(np.dot(cpc, x_np) <= soglia_cpc)
+    if soglia_num_publisher is not None:
+        # Vincolo Numero Publisher
+        solver.Add(sum(x_np) <= soglia_num_publisher)
     # Risolvo il problema
     status = solver.Solve()
     results = pd.DataFrame(columns=df.columns)
@@ -68,11 +72,13 @@ def solver(
                     results = pd.concat([results, df.iloc[[i]]])
         print("Knapsack Solver: Soluzione ottimale trovata!")
         if soglia_clicks is not None:
-            print(f"Clicks = {results['num_clicks'].sum()}")
+            print(f"Clicks = {results['clicks'].sum()}")
         if soglia_spent is not None:
             print(f"Spent = {results['spent'].sum()}")
         if soglia_cpc is not None:
-            print(f"CPC = {results['spent'].sum() / results['num_clicks'].sum()}")
+            print(f"CPC = {results['spent'].sum() / results['clicks'].sum()}")
+        if soglia_num_publisher is not None:
+            print(f"Numero Publisher = {results.shape[0]}")
     else:
         print("Knapsack Solver: Non è stata trovata una soluzione ottimale.")
         # Return empty dataframe

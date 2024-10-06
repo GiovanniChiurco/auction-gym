@@ -1,0 +1,117 @@
+{
+  "random_seed": 0,
+  "num_runs": 1,
+  "num_iter" : 200,
+  "rounds_per_iter": 500,
+  "num_participants_per_round": 4,
+  "embedding_size": 70,
+  "embedding_var": 1.0,
+  "obs_embedding_size": 70,
+  "allocation": "FirstPrice",
+  "knapsack_params": {
+    "soglia_spent": 100
+  },
+  "agents": [
+    {
+      "name": "Nostro",
+      "adv_name": "Racer 1000",
+      "num_copies": 1,
+      "num_items": 1,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "TruthfulBidder",
+        "kwargs": {}
+      }
+    },
+    {
+      "name": "Reflex Pro",
+      "adv_name": "Reflex Pro",
+      "num_copies": 1,
+      "num_items": 1,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "TruthfulBidder",
+        "kwargs": {}
+      }
+    },
+    {
+      "name": "Speedster GT",
+      "adv_name": "Speedster GT",
+      "num_copies": 1,
+      "num_items": 1,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "TruthfulBidder",
+        "kwargs": {}
+      }
+    },
+    {
+      "name": "Pasta Bio",
+      "adv_name": "Pasta Bio",
+      "num_copies": 1,
+      "num_items": 1,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "TruthfulBidder",
+        "kwargs": {}
+      }
+    },
+    {
+      "name": "Sneakers High-top",
+      "adv_name": "Sneakers High-top",
+      "num_copies": 1,
+      "num_items": 1,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "TruthfulBidder",
+        "kwargs": {}
+      }
+    },
+    {
+      "name": "Conto Risparmio Plus",
+      "adv_name": "Conto Risparmio Plus",
+      "num_copies": 1,
+      "num_items": 1,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "TruthfulBidder",
+        "kwargs": {}
+      }
+    },
+    {
+      "name": "Smartphone Pro X",
+      "adv_name": "Smartphone Pro X",
+      "num_copies": 1,
+      "num_items": 1,
+      "allocator": {
+        "type": "OracleAllocator",
+        "kwargs": {}
+      },
+      "bidder": {
+        "type": "TruthfulBidder",
+        "kwargs": {}
+      }
+    }
+  ],
+  "output_dir": "results/FP_Truthful_Oracle_sigmoids_more_iterations_changelinucb/",
+  "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/ad_embeddings_red_70.pkl",
+  "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/sites_embeddings_red_70.pkl"
+}

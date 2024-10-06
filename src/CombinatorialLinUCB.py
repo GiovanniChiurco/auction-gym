@@ -58,8 +58,9 @@ class CombinatorialLinUCB:
         #     }, index=[0])
         # ], ignore_index=True)
 
-    def round_iteration(self, publisher_list: List[Publisher], iteration: int,
-                        soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None):
+    def round_iteration(
+            self, publisher_list: List[Publisher], iteration: int, soglia_clicks: float = None,
+            soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None) -> List[Publisher]:
         # Check if there are new arms (= new publishers in the list)
         for publisher in publisher_list:
             if not self.check_publisher_exist(publisher):
@@ -68,7 +69,11 @@ class CombinatorialLinUCB:
             self.update_arm(publisher=publisher, iteration=iteration)
         # Select the super-arm
         # il parametro publisher_list non viene passato al solver perché i dati necessari sono già presenti nel dataframe iteration_stats
-        super_arm = self.knapsack_solver(soglia_spent=soglia_spent, soglia_clicks=soglia_clicks, soglia_cpc=soglia_cpc)
+        super_arm = self.knapsack_solver(
+            soglia_spent=soglia_spent,
+            soglia_clicks=soglia_clicks,
+            soglia_cpc=soglia_cpc,
+            soglia_num_publisher=soglia_num_publisher)
         # Return the super-arm
         return super_arm
 
@@ -77,24 +82,42 @@ class CombinatorialLinUCB:
         self.A[publisher_name] += np.outer(publisher_embedding, publisher_embedding)
         self.b[publisher_name] += reward * publisher_embedding
         # Save the parameters
-        self.linucb_params = pd.concat([
-            self.linucb_params,
-            pd.DataFrame({
+        if not self.linucb_params.empty:
+            self.linucb_params = pd.concat([
+                self.linucb_params,
+                pd.DataFrame({
+                    'Iteration': iteration,
+                    'publisher': publisher_name,
+                    'exp_rew': self.theta[publisher_name].dot(publisher_embedding),
+                    'p': self.p[publisher_name]
+                }, index=[0])
+            ], ignore_index=True)
+        else:
+            self.linucb_params = pd.DataFrame({
                 'Iteration': iteration,
                 'publisher': publisher_name,
                 'exp_rew': self.theta[publisher_name].dot(publisher_embedding),
                 'p': self.p[publisher_name]
             }, index=[0])
-        ], ignore_index=True)
 
-    def initial_round(self, publisher_rewards_list: List[PublisherReward], iteration: int):
-        """
-        Method to initialize the parameters of the arms without choosing an arm
-        """
-        for publisher_reward in publisher_rewards_list:
-            if not self.check_publisher_exist(publisher_reward.publisher):
-                self.add_new_arm(publisher_reward.publisher)
-            self.update(publisher_reward.publisher.name, publisher_reward.publisher.embedding, publisher_reward.reward, iteration)
+    # def initial_round(self, publisher_rewards_list: List[PublisherReward], iteration: int):
+    #     """
+    #     Method to initialize the parameters of the arms without choosing an arm
+    #     """
+    #     for publisher_reward in publisher_rewards_list:
+    #         if not self.check_publisher_exist(publisher_reward.publisher):
+    #             self.add_new_arm(publisher_reward.publisher)
+    #         self.update(publisher_reward.publisher.name, publisher_reward.publisher.embedding, publisher_reward.reward, iteration)
+
+    def initial_round(
+            self, publisher_list: List[Publisher], iteration: int,
+    ):
+        # Check if there are new arms (= new publishers in the list)
+        for publisher in publisher_list:
+            if not self.check_publisher_exist(publisher):
+                self.add_new_arm(publisher)
+            # Update arms parameters
+            self.update_arm(publisher=publisher, iteration=iteration)
 
     def check_publisher_exist(self, publisher: Publisher):
         for pub in self.publisher_list:
@@ -114,7 +137,7 @@ class CombinatorialLinUCB:
         self.iteration_stats = concat_df.drop_duplicates(subset=['publisher'], keep='last')
 
     def knapsack_solver(
-            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None
+            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None
     ) -> List[Publisher]:
         # Add the UCBs to the dataframe
         self.iteration_stats['rew_ucb'] = self.iteration_stats['publisher'].apply(lambda x: self.p[x])
@@ -128,7 +151,8 @@ class CombinatorialLinUCB:
                          cpc=cpc,
                          soglia_spent=soglia_spent,
                          soglia_clicks=soglia_clicks,
-                         soglia_cpc=soglia_cpc)
+                         soglia_cpc=soglia_cpc,
+                         soglia_num_publisher=soglia_num_publisher)
         if results.empty:
             results = self.iteration_stats
         publisher_names = results['publisher'].unique()

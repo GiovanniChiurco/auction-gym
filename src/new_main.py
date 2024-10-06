@@ -71,10 +71,10 @@ def parse_config(path):
     #     for agent_config in agent_configs
     # }
 
-    agents2item_values = {
-        agent_config['name']: rng.lognormal(-3, 0.2, agent_config['num_items'])
-        for agent_config in agent_configs
-    }
+    # agents2item_values = {
+    #     agent_config['name']: rng.lognormal(-3, 0.2, agent_config['num_items'])
+    #     for agent_config in agent_configs
+    # }
 
     # Add intercepts to embeddings (Uniformly in [-4.5, -1.5], this gives nicer distributions for P(click))
     # for agent, items in agents2items.items():
@@ -82,8 +82,14 @@ def parse_config(path):
 
     adv_embedding_path = config['adv_embedding_path']
     adv_embeddings = pickle.load(open(adv_embedding_path, 'rb'))
+    # Adv embeddings for agents
     agents2items = {
         agent_config['name']: adv_embeddings[agent_config['adv_name']]
+        for agent_config in agent_configs
+    }
+    # Adv values for agents equal to 1.0 for all agents and advs
+    agents2item_values = {
+        agent_config['name']: np.array([1.0] * agent_config['num_items'], dtype=np.float32)
         for agent_config in agent_configs
     }
     publisher_embeddings_path = config['publisher_embedding_path']
@@ -131,12 +137,12 @@ def instantiate_auction(rng, config, agents2items, agents2item_values, agents, m
             config['num_iter'], config['rounds_per_iter'], config['output_dir'])
 
 
-def instantiate_publishers(publisher_embeddings):
+def instantiate_publishers(publisher_embeddings, rounds_per_iter=500):
     return [
         Publisher(
             name=publisher,
             embedding=embedding,
-            num_auctions=500)
+            num_auctions=rounds_per_iter)
         for publisher, embedding in publisher_embeddings.items()
     ]
 
@@ -146,28 +152,71 @@ def add_noise(user_embedding, noise_strength=0.01):
     return user_embedding + noise
 
 
-def initialize_deal(publisher_list: List[Publisher], publisher_emb, round_per_iter, agents, adv_embeddings):
-    chosen_publisher_emb = {publisher.name: publisher_emb[publisher.name] for publisher in publisher_list}
-    # For each publisher, add noise to the embedding to simulate different users for rounds_per_iter times
-    noisy_publisher_emb = {
-        publisher.name: np.array([
-            add_noise(chosen_publisher_emb[publisher.name])
-            for _ in range(round_per_iter)
-        ])
-        for publisher in publisher_list
-    }
-    # Compute cosine similarity between each pair of noisy embeddings and all adv agents embeddings
-    agents_publishers_similarity = {}
-    for agent in agents:
-        agents_publishers_similarity[agent.name] = {}
-        agent_embedding = adv_embeddings[agent.adv_name]
-        for publisher in publisher_list:
-            noisy_emb = noisy_publisher_emb[publisher.name]
-            agent_publisher_sim = cosine_similarity(noisy_emb, agent_embedding.reshape(1, -1))
-            # If an element is negative, set it to 0
-            agent_publisher_sim[agent_publisher_sim < 0] = 0
-            agents_publishers_similarity[agent.name][publisher.name] = agent_publisher_sim
-    return noisy_publisher_emb, agents_publishers_similarity
+# def initialize_deal(publisher_list: List[Publisher], publisher_emb, round_per_iter, agents, adv_embeddings):
+#     chosen_publisher_emb = {publisher.name: publisher_emb[publisher.name] for publisher in publisher_list}
+#     # For each publisher, add noise to the embedding to simulate different users for rounds_per_iter times
+#     noisy_publisher_emb = {
+#         publisher.name: np.array([
+#             add_noise(chosen_publisher_emb[publisher.name])
+#             for _ in range(round_per_iter)
+#         ])
+#         for publisher in publisher_list
+#     }
+#     # Compute cosine similarity between each pair of noisy embeddings and all adv agents embeddings
+#     agents_publishers_similarity = {}
+#     for agent in agents:
+#         agents_publishers_similarity[agent.name] = {}
+#         agent_embedding = adv_embeddings[agent.adv_name]
+#         for publisher in publisher_list:
+#             noisy_emb = noisy_publisher_emb[publisher.name]
+#             agent_publisher_sim = cosine_similarity(noisy_emb, agent_embedding.reshape(1, -1))
+#             # If an element is negative, set it to 0
+#             agent_publisher_sim[agent_publisher_sim < 0] = 0
+#             agents_publishers_similarity[agent.name][publisher.name] = agent_publisher_sim
+#     return noisy_publisher_emb, agents_publishers_similarity
+
+def generate_user_contexts(num_iter, rounds_per_iter, dim_embedding, noise_strength, publisher_embeddings):
+    """
+    Genera un dizionario con publisher come chiave e un array con dimensioni num_iter x rounds_per_iter x dim_embedding
+    """
+    n, m, k = num_iter, rounds_per_iter, dim_embedding
+    user_contexts = {}
+    for publisher_name, pub_emb in publisher_embeddings.items():
+        pub_array = np.array(pub_emb, dtype=np.float32)
+        new_array = np.tile(pub_array, (n, m, 1))
+        noise_array = np.random.normal(0, noise_strength, size=(n, m, k)).astype(np.float32)
+        new_array += noise_array
+        user_contexts[publisher_name] = new_array
+    return user_contexts
+
+def compute_sigmoids(user_contexts, adv_embeddings):
+    """
+    Restituisco un dizionario con publisher come chiave e un dizionario con annunci come
+    chiave e una matrice numpy con dimensioni num_iter x rounds_per_iter come valore
+    """
+    # Compute scalar products
+    scalar_products = {}
+    for publisher_name, user_context in user_contexts.items():
+        scalar_products[publisher_name] = {}
+        for adv_name, adv_emb in adv_embeddings.items():
+            adv_array = np.array(adv_emb, dtype=np.float32)
+            scalar_products[publisher_name][adv_name] = np.einsum('ijk,k->ij', user_context, adv_array)
+    # Compute mean and std over all scalar products for all publishers and ads
+    all_tensors = np.concatenate([score for adv_scores in scalar_products.values() for score in adv_scores.values()])
+    mean_scores = np.mean(all_tensors)
+    std_scores = np.std(all_tensors)
+    # Compute sigmoids
+    sigmoids = {}
+    for publisher_name, adv_scores in scalar_products.items():
+        sigmoids[publisher_name] = {}
+        for adv_name, score in adv_scores.items():
+            sigmoids[publisher_name][adv_name] = 1 / (1 + np.exp(-(score - mean_scores) / (0.5 * std_scores)))
+    return sigmoids
+
+def initialize_deal(num_iter, rounds_per_iter, dim_embedding, noise_strength, publisher_embeddings, adv_embeddings):
+    user_contexts = generate_user_contexts(num_iter, rounds_per_iter, dim_embedding, noise_strength, publisher_embeddings)
+    adv_sigmoids = compute_sigmoids(user_contexts, adv_embeddings)
+    return user_contexts, adv_sigmoids
 
 
 def simulation_run():
@@ -175,26 +224,38 @@ def simulation_run():
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
     comb_linucb = CombinatorialLinUCB(alpha=1, d=embedding_size, publisher_list=init_publisher_list)
+    init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
+    start_gen_deal = time.time()
+    user_contexts, sigmoids = initialize_deal(
+        num_iter, rounds_per_iter, embedding_size, 0.01, init_publisher_embeddings, adv_embeddings)
+    print(f'Generating deal took {time.time() - start_gen_deal} seconds')
     for i in range(num_iter):
         print(f'==== ITERATION {i} ====')
         if i > 1:
             # After the first two iterations, run Combinatorial LinUCB to change the publisher list
             start_comb_linucb = time.time()
-            publisher_list = comb_linucb.round_iteration(init_publisher_list, iteration=i, soglia_spent=soglia_spent, soglia_clicks=soglia_clicks, soglia_cpc=soglia_cpc)
+            publisher_list = comb_linucb.round_iteration(
+                init_publisher_list,
+                iteration=i,
+                soglia_spent=soglia_spent,
+                soglia_clicks=soglia_clicks,
+                soglia_cpc=soglia_cpc,
+                soglia_num_publisher=soglia_num_publisher
+            )
             print(f'Combinatorial LinUCB took {time.time() - start_comb_linucb} seconds')
         else:
             publisher_list = init_publisher_list
-        start_comp_sim = time.time()
         # Compute all agents' similarity with all publishers
-        user_contexts, agents_publishers_similarity = initialize_deal(
-            publisher_list, publisher_embeddings, rounds_per_iter, agents, adv_embeddings)
-        print(f'Computing similarity took {time.time() - start_comp_sim} seconds')
+        # start_comp_sim = time.time()
+        # user_contexts, agents_publishers_similarity = initialize_deal(
+        #     publisher_list, publisher_embeddings, rounds_per_iter, agents, adv_embeddings)
+        # print(f'Computing similarity took {time.time() - start_comp_sim} seconds')
         start_sim_auctions = time.time()
         # For each publisher, simulate rounds_per_iter opportunities
         for publisher in publisher_list:
             for j in range(rounds_per_iter):
-                current_user_context = user_contexts[publisher.name][j]
-                auction.simulate_opportunity(publisher.name, current_user_context, agents_publishers_similarity, j)
+                current_user_context = user_contexts[publisher.name][i][j]
+                auction.simulate_opportunity(publisher.name, current_user_context, sigmoids[publisher.name], i, j)
         print(f'Simulating {len(publisher_list)*rounds_per_iter} auctions took {time.time() - start_sim_auctions} seconds')
         # Update agents bidder and allocator models
         for agent_id, agent in enumerate(auction.agents):
@@ -216,7 +277,7 @@ def simulation_run():
                         publishers_rewards.append(
                             PublisherReward(
                                 publisher=curr_pub,
-                                reward=publisher_data['num_clicks']
+                                reward=publisher_data['clicks']
                             )
                         )
                     comb_linucb.initial_round(publishers_rewards, iteration=i)
@@ -226,7 +287,7 @@ def simulation_run():
                         comb_linucb.update(
                             publisher_name=publisher_data['publisher'],
                             publisher_embedding=publisher_embeddings[publisher_data['publisher']],
-                            reward=publisher_data['num_clicks'],
+                            reward=publisher_data['clicks'],
                             iteration=i
                         )
                 # Save stats for our agent
@@ -243,15 +304,15 @@ def simulation_run():
                 # Print stats for our agent
                 print(f"Stats after iteration {i}")
                 print(f"Number of publishers: {len(agent_df['publisher'].unique())}")
-                print(f"Number of clicks at iteration {i}: {agent_df['num_clicks'].sum()}")
+                print(f"Number of clicks at iteration {i}: {agent_df['clicks'].sum()}")
                 print(f"Spent at iteration {i}: {agent_df['spent'].sum()}")
                 # Save stats in Combinatorial LinUCB
                 # Group by publisher if there are more than one iteration data
                 grouped_data = agent_df.groupby(by=['publisher']) \
                     .sum() \
                     .reset_index() \
-                    [['publisher', 'won_auctions', 'lost_auctions', 'num_clicks', 'spent']]
-                grouped_data['cpc'] = grouped_data.apply(lambda row: row['spent'] / row['num_clicks'] if row['num_clicks'] > 0 else 0, axis=1)
+                    [['publisher', 'impressions', 'lost_auctions', 'clicks', 'spent']]
+                grouped_data['cpc'] = grouped_data.apply(lambda row: row['spent'] / row['clicks'] if row['clicks'] > 0 else 0, axis=1)
                 comb_linucb.save_stats(grouped_data)
 
             agent2net_utility[agent.name].append(agent.net_utility)
@@ -270,7 +331,7 @@ def simulation_run():
     linucb_params = comb_linucb.linucb_params
     linucb_params['Run'] = run
     # Merge with previously saved parameters
-    agent_df = pd.read_csv(filename, usecols=['publisher', 'num_clicks', 'Iteration', 'spent'])
+    agent_df = pd.read_csv(filename, usecols=['publisher', 'clicks', 'Iteration', 'spent', 'true_clicks'])
     merged_df = pd.merge(
         agent_df,
         linucb_params,
@@ -291,12 +352,15 @@ if __name__ == '__main__':
     soglia_clicks = None
     soglia_spent = None
     soglia_cpc = None
+    soglia_num_publisher = None
     if 'soglia_clicks' in knapsack_params:
         soglia_clicks = knapsack_params['soglia_clicks']
     if 'soglia_spent' in knapsack_params:
         soglia_spent = knapsack_params['soglia_spent']
     if 'soglia_cpc' in knapsack_params:
         soglia_cpc = knapsack_params['soglia_cpc']
+    if 'soglia_num_publisher' in knapsack_params:
+        soglia_num_publisher = knapsack_params['soglia_num_publisher']
 
     # Plotting config
     FIGSIZE = (8, 5)

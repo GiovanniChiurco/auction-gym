@@ -42,7 +42,8 @@ class Agent:
             estim_CTRs_MAP = self.allocator.estimate_CTR(context, sample=False)
             return best_item, estim_CTRs_MAP[best_item]
 
-        return best_item, estim_CTRs[best_item]
+        # return best_item, estim_CTRs[best_item]
+        return best_item, estim_CTRs
 
     def bid(self, context: np.ndarray, publisher_name: str, precomputed_cos_sim: float):
         # First, pick what item we want to choose
@@ -133,20 +134,24 @@ class Agent:
             publisher_won_auctions = len(publisher_won_logs)
             publisher_lost_auctions = len(publisher_lost_logs)
             win_rate = publisher_won_auctions / (publisher_won_auctions + publisher_lost_auctions)
-            num_clicks = np.sum([opp.outcome for opp in publisher_won_logs])
-            ctr = (num_clicks / publisher_won_auctions) * 100 if publisher_won_auctions > 0 else 0
+            clicks = np.sum([opp.outcome for opp in publisher_won_logs])
+            ctr = (clicks / publisher_won_auctions) * 100 if publisher_won_auctions > 0 else 0
             true_ctr = np.mean([opp.true_CTR for opp in publisher_won_logs]) if publisher_won_logs else 0
+            # Ogni auction di un publisher ha un true_CTR perché il contesto dell'utente cambia ogni volta
+            # poiché si aggiunge ogni volta un rumore gaussiano diverso all'embedding del publisher
+            true_clicks = np.sum(opp.true_CTR for opp in publisher_won_logs)
             spent = np.sum([opp.price for opp in publisher_won_logs])
             mean_bid = np.mean([opp.bid for opp in publisher_won_logs]) if publisher_won_logs else 0
-            cpc = spent / num_clicks if num_clicks > 0.0 else 0
+            cpc = spent / clicks if clicks > 0.0 else 0
             cpm = (spent / publisher_won_auctions) * 1000 if publisher_won_auctions > 0 else 0
 
             publishers_data.append({
                 'publisher': publisher,
-                'won_auctions': publisher_won_auctions,
+                'impressions': publisher_won_auctions,
                 'lost_auctions': publisher_lost_auctions,
                 'win_rate': win_rate,
-                'num_clicks': num_clicks,
+                'clicks': clicks,
+                'true_clicks': true_clicks,
                 'ctr': ctr,
                 'true_ctr': true_ctr,
                 'spent': spent,
