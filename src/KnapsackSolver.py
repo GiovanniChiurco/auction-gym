@@ -33,11 +33,13 @@ def solver(
         n: int,
         rew_ucb: np.ndarray,
         clicks: np.ndarray = None,
+        impressions: np.ndarray = None,
         spent: np.ndarray = None,
         cpc: np.ndarray = None,
         soglia_spent: float = None,
         soglia_clicks: float = None,
         soglia_cpc: float = None,
+        soglia_ctr: float = None,
         soglia_num_publisher: int = None,
 ):
     # Inizializzo il solver
@@ -56,6 +58,9 @@ def solver(
     if soglia_cpc is not None:
         # Vincolo CPC
         solver.Add(np.dot(cpc, x_np) <= soglia_cpc)
+    if soglia_ctr is not None:
+        # Vincolo CTR
+        solver.Add(np.dot(clicks, x_np) >= soglia_ctr * np.dot(impressions, x_np))
     if soglia_num_publisher is not None:
         # Vincolo Numero Publisher
         solver.Add(sum(x_np) <= soglia_num_publisher)
