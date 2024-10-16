@@ -60,7 +60,7 @@ class CombinatorialLinUCB:
 
     def round_iteration(
             self, publisher_list: List[Publisher], iteration: int, soglia_clicks: float = None,
-            soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None) -> List[Publisher]:
+            soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None, soglia_ctr: float = None) -> List[Publisher]:
         # Check if there are new arms (= new publishers in the list)
         for publisher in publisher_list:
             if not self.check_publisher_exist(publisher):
@@ -73,7 +73,8 @@ class CombinatorialLinUCB:
             soglia_spent=soglia_spent,
             soglia_clicks=soglia_clicks,
             soglia_cpc=soglia_cpc,
-            soglia_num_publisher=soglia_num_publisher)
+            soglia_num_publisher=soglia_num_publisher,
+            soglia_ctr=soglia_ctr)
         # Return the super-arm
         return super_arm
 
@@ -137,22 +138,24 @@ class CombinatorialLinUCB:
         self.iteration_stats = concat_df.drop_duplicates(subset=['publisher'], keep='last')
 
     def knapsack_solver(
-            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None
+            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
         # Add the UCBs to the dataframe
         self.iteration_stats['rew_ucb'] = self.iteration_stats['publisher'].apply(lambda x: self.p[x])
         # Get the data from the dataframe for the solver
-        n, clicks, rew_ucb, spent, cpc = get_data(self.iteration_stats)
+        n, clicks, rew_ucb, impressions, spent, cpc = get_data(self.iteration_stats)
         results = solver(df=self.iteration_stats,
                          n=n,
                          rew_ucb=rew_ucb,
                          clicks=clicks,
+                            impressions=impressions,
                          spent=spent,
                          cpc=cpc,
                          soglia_spent=soglia_spent,
                          soglia_clicks=soglia_clicks,
                          soglia_cpc=soglia_cpc,
-                         soglia_num_publisher=soglia_num_publisher)
+                         soglia_num_publisher=soglia_num_publisher,
+                         soglia_ctr=soglia_ctr)
         if results.empty:
             results = self.iteration_stats
         publisher_names = results['publisher'].unique()

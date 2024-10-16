@@ -273,7 +273,7 @@ class ValueLearningBidder(Bidder):
         # Predict Utility -- \hat{u}
         orig_features = torch.Tensor(np.hstack((estimated_CTRs.reshape(-1,1), values.reshape(-1,1), np.array(self.gammas).reshape(-1, 1))))
         W = self.winrate_model(orig_features).squeeze().detach().numpy()
-        print('AUC predicting P(win):\t\t\t\t', roc_auc_score(won_mask.astype(np.uint8), W))
+        # print('AUC predicting P(win):\t\t\t\t', roc_auc_score(won_mask.astype(np.uint8), W))
 
         if self.inference == 'policy':
             # Learn a policy to maximise E[U | bid] where bid ~ policy

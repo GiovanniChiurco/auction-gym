@@ -5,8 +5,58 @@ import multiprocessing
 from kLinUCB import KLinUCB
 
 
+def create_4d_array(dict_input):
+    # Ottieni la lista delle chiavi e il numero di chiavi
+    keys = list(dict_input.keys())
+    num_keys = len(keys)
+    
+    # Assumi che tutti gli array abbiano la stessa dimensione
+    n, m, k = dict_input[keys[0]].shape
+    
+    # Crea un array 4D vuoto
+    array_4d = np.zeros((num_keys, n, m, k), dtype=np.float32)
+    
+    # Crea il dizionario per mappare le chiavi agli indici
+    key_to_index = {}
+    
+    # Popola l'array 4D e aggiorna il dizionario di mappatura
+    for i, key in enumerate(keys):
+        array_4d[i] = dict_input[key]
+        key_to_index[key] = i
+    
+    return key_to_index, array_4d
+
+def create_5d_array(outer_key_to_index, nested_dict):
+    # Ottieni la lista delle chiavi esterne e il numero di chiavi esterne
+    outer_keys = list(outer_key_to_index.keys())
+    t = len(outer_keys)
+    
+    # Ottieni la lista delle chiavi interne dal primo dizionario interno e il numero di chiavi interne
+    first_inner_dict = nested_dict[outer_keys[0]]
+    inner_keys = list(first_inner_dict.keys())
+    s = len(inner_keys)
+    
+    # Assumi che tutti gli array abbiano la stessa dimensione (n, m, 1)
+    n, m = first_inner_dict[inner_keys[0]].shape
+    
+    # Crea un array 5D vuoto
+    array_5d = np.zeros((t, s, n, m), dtype=np.float32)
+    
+    # Crea i due dizionari per mappare le chiavi esterne e interne agli indici
+    inner_key_to_index = {}
+    
+    # Popola l'array 5D e aggiorna i dizionari di mappatura
+    for outer_key, i in outer_key_to_index.items():
+        inner_dict = nested_dict[outer_key]
+        for j, inner_key in enumerate(inner_keys):
+            inner_key_to_index[inner_key] = j
+            array_5d[i, j] = inner_dict[inner_key]
+    
+    return inner_key_to_index, array_5d
+
+
 def simulate_auctions_random(
-        publisher_list: List[Publisher], user_contexts: dict, sigmoids:dict, auction: Auction, iteration: int
+        publisher_list: List[Publisher], publisher_mapping: dict, ad_mapping: dict, user_contexts: dict, sigmoids:dict, auction: Auction, iteration: int
 ):
     # Create a mask for each agent
     mask_pub_agent = {}
@@ -20,9 +70,10 @@ def simulate_auctions_random(
             idx = np.where(mask == 0)[0][0]
         except IndexError:
             continue
-
-        curr_user_context = user_contexts[publisher.name][iteration][idx]
-        auction.simulate_opportunity(publisher.name, curr_user_context, sigmoids[publisher.name], iteration, idx)
+        
+        pub_index = publisher_mapping[publisher.name]
+        curr_user_context = user_contexts[pub_index][iteration][idx]
+        auction.simulate_opportunity(publisher.name, curr_user_context, sigmoids[pub_index], ad_mapping, iteration, idx)
 
         mask[idx] = 1
 
@@ -37,7 +88,7 @@ def simulate_auctions_sequentially(
             auction.simulate_opportunity(publisher.name, current_user_context, sigmoids[publisher.name], i, j)
 
 
-def simulation_run(alpha, init_publisher_list, user_contexts, sigmoids, publisher_embeddings, auction, num_iter, rounds_per_iter, embedding_size=70, k=300):
+def simulation_run(alpha, init_publisher_list, publisher_mapping, ad_mapping, user_contexts, sigmoids, publisher_embeddings, auction, num_iter, rounds_per_iter, embedding_size=70, k=300):
     agent_stats = pd.DataFrame()
     comb_linucb = KLinUCB(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list, k=k)
     for i in range(num_iter):
@@ -53,6 +104,8 @@ def simulation_run(alpha, init_publisher_list, user_contexts, sigmoids, publishe
         # Simulate auctions randomly
         simulate_auctions_random(
             publisher_list=publisher_list,
+            publisher_mapping=publisher_mapping, 
+            ad_mapping=ad_mapping,
             user_contexts=user_contexts,
             sigmoids=sigmoids,
             auction=auction,
@@ -95,9 +148,9 @@ def simulation_run(alpha, init_publisher_list, user_contexts, sigmoids, publishe
     return agent_stats, merged_df
 
 
-def run_simulation(alpha, output_dir, init_publisher_list, embedding_size, user_contexts, sigmoids, publisher_embeddings, auction, num_iter, rounds_per_iter, k):
+def run_simulation(alpha, output_dir, init_publisher_list, embedding_size, publisher_mapping, ad_mapping, user_contexts, sigmoids, publisher_embeddings, auction, num_iter, rounds_per_iter, k):
     print(f'Running simulation alpha={alpha} and max num of publishers={k}')
-    budget_results = simulation_run(alpha, init_publisher_list, user_contexts, sigmoids, publisher_embeddings, auction, num_iter, rounds_per_iter, embedding_size=embedding_size, k=k)
+    budget_results = simulation_run(alpha, init_publisher_list, publisher_mapping, ad_mapping, user_contexts, sigmoids, publisher_embeddings, auction, num_iter, rounds_per_iter, embedding_size=embedding_size, k=k)
     agent_stats, lin_ucb_params = budget_results
 
     lin_ucb_params.to_csv(
@@ -132,7 +185,7 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     rng.shuffle(publishers)
-    init_publisher_list = publishers[:300]
+    init_publisher_list = publishers[:200]
     ks = [10, 20, 50, 100, 150, 200, 250, 300]
     alpha_list = [0, 0.4, 1.0, 1.6]
 
@@ -140,13 +193,16 @@ if __name__ == "__main__":
     start_gen_deal = time.time()
     user_contexts, sigmoids = initialize_deal(num_iter, rounds_per_iter, embedding_size, 0.01,
                                               init_publisher_embeddings, adv_embeddings)
+    # Convert dicts into numpy arrays
+    publisher_mapping, user_contexts = create_4d_array(user_contexts)
+    ad_mapping, sigmoids = create_5d_array(publisher_mapping, sigmoids)
     print(f'Generating deal took {time.time() - start_gen_deal} seconds')
 
     k_res = {}
 
     with multiprocessing.Pool(processes=2) as pool:
         results = pool.starmap(run_simulation,
-                               [(1, output_dir, init_publisher_list, embedding_size, user_contexts, sigmoids, publisher_embeddings, auction, num_iter, rounds_per_iter, k)
+                               [(1, output_dir, init_publisher_list, embedding_size, publisher_mapping, ad_mapping, user_contexts, sigmoids, publisher_embeddings, auction, num_iter, rounds_per_iter, k)
                                 for k in ks])
 
         for result in results:

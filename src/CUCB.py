@@ -33,9 +33,27 @@ class CUCB:
         concat_df = pd.concat([self.iteration_stats, iteration_stats], ignore_index=True)
         self.iteration_stats = concat_df.drop_duplicates(subset=['publisher'], keep='last')
 
-    def update_arm(self, publisher_name: str, reward: float):
+    def update_arm(self, publisher_name: str, reward: float, iteration: int):
         self.Na[publisher_name] += 1
         self.empirical_means[publisher_name] += (reward - self.empirical_means[publisher_name]) / self.Na[publisher_name]
+        # Save the parameters
+        if not self.linucb_params.empty:
+            self.linucb_params = pd.concat([
+                self.linucb_params,
+                pd.DataFrame({
+                    'Iteration': iteration,
+                    'publisher': publisher_name,
+                    'exp_rew': self.empirical_means[publisher_name],
+                    'ucb': self.actual_means[publisher_name]
+                }, index=[0])
+            ], ignore_index=True)
+        else:
+            self.linucb_params = pd.DataFrame({
+                'Iteration': iteration,
+                'publisher': publisher_name,
+                'exp_rew': self.empirical_means[publisher_name],
+                'ucb': self.actual_means[publisher_name]
+            }, index=[0])
 
     def update(self, publisher_name: str):
         adj_term = np.sqrt((2 * np.log(self.t)) / (self.Na[publisher_name]))

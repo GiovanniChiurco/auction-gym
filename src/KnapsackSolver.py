@@ -9,10 +9,11 @@ def get_data(
     # Estraggo i dati dal dataframe
     n = df.shape[0]
     clicks = df['clicks'].values
+    impressions = df['impressions'].values
     rew_ucb = df['rew_ucb'].values
     spent = df['spent'].values
     cpc = df['cpc'].values
-    return n, clicks, rew_ucb, spent, cpc
+    return n, clicks, impressions, rew_ucb, spent, cpc
 
 # def get_data(
 #         df: pd.DataFrame,
@@ -60,7 +61,7 @@ def solver(
         solver.Add(np.dot(cpc, x_np) <= soglia_cpc)
     if soglia_ctr is not None:
         # Vincolo CTR
-        solver.Add(np.dot(clicks, x_np) >= soglia_ctr * np.dot(impressions, x_np))
+        solver.Add(np.dot(rew_ucb, x_np) >= soglia_ctr * np.dot(impressions, x_np))
     if soglia_num_publisher is not None:
         # Vincolo Numero Publisher
         solver.Add(sum(x_np) <= soglia_num_publisher)

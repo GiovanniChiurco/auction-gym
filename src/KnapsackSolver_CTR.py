@@ -64,7 +64,11 @@ def solver(
                     results = pd.concat([results, df.iloc[[i]]])
         print("Knapsack Solver: Soluzione ottimale trovata!")
         print(f"Valore obiettivo = {round(solver.Objective().Value(), 3)}")
-        print(f"CTR = {round(results['clicks'].sum() / results['impressions'].sum() * 100, 3)}%")
+        impressions_sum = results['impressions'].sum()
+        if impressions_sum != 0:
+            print(f"CTR = {round(results['clicks'].sum() / impressions_sum * 100, 3)}%")
+        else:
+            print(f"CTR = {0}%")
     else:
         print("Knapsack Solver: Non è stata trovata una soluzione ottimale.")
         # Return empty dataframe

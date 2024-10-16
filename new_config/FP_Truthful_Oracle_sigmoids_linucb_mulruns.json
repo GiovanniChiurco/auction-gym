@@ -1,15 +1,15 @@
 {
   "random_seed": 0,
-  "num_runs": 1,
-  "num_iter" : 200,
-  "rounds_per_iter": 250,
+  "num_runs": 100,
+  "num_iter" : 50,
+  "rounds_per_iter": 200,
   "num_participants_per_round": 4,
   "embedding_size": 70,
   "embedding_var": 1.0,
   "obs_embedding_size": 70,
   "allocation": "FirstPrice",
   "knapsack_params": {
-    "soglia_spent": 100
+    "soglia_ctr": 0.004
   },
   "agents": [
     {
@@ -111,7 +111,7 @@
       }
     }
   ],
-  "output_dir": "results/FP_Truthful_Oracle_sigmoids_klinucb_parallel/",
+  "output_dir": "results/FP_Truthful_Oracle_sigmoids_linucb_mulruns/",
   "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/ad_embeddings_red_70.pkl",
   "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/sites_embeddings_red_70.pkl"
 }
