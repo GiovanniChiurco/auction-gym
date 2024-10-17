@@ -1,4 +1,5 @@
 import multiprocessing
+from CombinatorialLinUCB_nuo import CombinatorialLinUCBNuo
 from new_main import *
 
 
@@ -35,15 +36,17 @@ def simulate_auctions_sequentially(
 
 
 def simulation_run(
-        run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr
+        run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter,
+        rounds_per_iter, soglia_ctr, embedding_size, alpha
 ):
     agent_stats = pd.DataFrame()
-    comb_linucb = CombinatorialLinUCB(alpha=1, d=70, publisher_list=init_publisher_list)
+    comb_linucb = CombinatorialLinUCBNuo(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list)
     for i in range(num_iter):
         print(f'Iteration {i}')
         if i > 1:
             publisher_list = comb_linucb.round_iteration(
                 publisher_list=publisher_list,
+                run=run,
                 iteration=i,
                 soglia_ctr=soglia_ctr
             )
@@ -69,7 +72,8 @@ def simulation_run(
                     comb_linucb.update(
                         publisher_name=publisher_data['publisher'],
                         publisher_embedding=init_publisher_embeddings[publisher_data['publisher']],
-                        reward=publisher_data['clicks'],
+                        clicks=publisher_data['clicks'],
+                        impressions=publisher_data['impressions'],
                         iteration=i
                     )
                 agent_df = pd.DataFrame(agent_stats_pub)
@@ -80,13 +84,6 @@ def simulation_run(
                     agent_stats = agent_df
                 else:
                     agent_stats = pd.concat([agent_stats, agent_df])
-                grouped_data = agent_df.groupby(by=['publisher']) \
-                    .sum() \
-                    .reset_index() \
-                    [['publisher', 'impressions', 'lost_auctions', 'clicks', 'spent']]
-                grouped_data['cpc'] = grouped_data.apply(
-                    lambda row: row['spent'] / row['clicks'] if row['clicks'] > 0 else 0, axis=1)
-                comb_linucb.save_stats(grouped_data)
 
             agent.clear_utility()
             agent.clear_logs()
@@ -98,12 +95,12 @@ def simulation_run(
         agent_stats,
         linucb_params,
         on=['publisher', 'Iteration'],
-        how='outer'
+        how='left'  # LinUCB at every round updates the parameters of all the arms, also the ones not selected
     )
     return agent_stats, merged_df
 
 
-def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr):
+def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha):
     print(f'[RUN {run}] Running simulation with soglia_ctr = {soglia_ctr}')
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
@@ -112,23 +109,11 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
                                               init_publisher_embeddings, adv_embeddings)
     print(f'Generating deal took {time.time() - start_gen_deal} seconds')
 
-    budget_results = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr)
+    budget_results = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
     agent_stats, lin_ucb_params = budget_results
 
     lin_ucb_params.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_{soglia_ctr}.csv'), index=False)
-
-    group_iter = lin_ucb_params.groupby(['Run', 'Iteration']) \
-        .agg({'impressions': 'sum', 'clicks': 'sum', 'exp_rew': 'sum', 'spent': 'sum', 'true_clicks': 'sum'}) \
-        .reset_index()
-    group_iter['ctr'] = group_iter['clicks'] / group_iter['impressions']
-    group_iter['true_ctr'] = group_iter['true_clicks'] / group_iter['impressions']
-    group_iter['abs_err'] = np.abs(group_iter['clicks'] - group_iter['exp_rew'])
-    group_iter['abs_perc_err'] = np.abs(group_iter['clicks'] - group_iter['exp_rew']) / group_iter['clicks']
-
-    group_iter.to_csv(
-        os.path.join(output_dir, f'grouped_results_per_iter_{run}_{soglia_ctr}.csv'),
-        index=False)
 
 
 if __name__ == "__main__":
@@ -143,26 +128,19 @@ if __name__ == "__main__":
                                                                          agents, max_slots, embedding_size,
                                                                          embedding_var, obs_embedding_size)
     publishers = instantiate_publishers(publisher_embeddings, rounds_per_iter)
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
 
-    # init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
-    # start_gen_deal = time.time()
-    # user_contexts, sigmoids = initialize_deal(num_iter, rounds_per_iter, embedding_size, 0.01,
-    #                                           init_publisher_embeddings, adv_embeddings)
-    # print(f'Generating deal took {time.time() - start_gen_deal} seconds')
-
-    # soglia_ctr_list = [0.5, 0.6, 0.7]#0.8, 0.9, 0.95, 0.97, 0.99]
-    # for soglia_ctr in soglia_ctr_list:
-    #     run_simulation(output_dir, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr)
-    
+    alpha = 0.2
     soglia_ctr = 0.97
-    tasks = [(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr)
+    tasks = [(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha)
              for run in range(num_runs)]
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=1) as pool:
+    with multiprocessing.Pool(processes=4) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')

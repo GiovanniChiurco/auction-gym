@@ -3,38 +3,32 @@ from ortools.linear_solver import pywraplp
 import numpy as np
 
 
+# def get_data(
+#         df: pd.DataFrame,
+# ):
+#     # Estraggo i dati dal dataframe
+#     n = df.shape[0]
+#     clicks = df['clicks'].values
+#     impressions = df['impressions'].values
+#     rew_ucb = df['rew_ucb'].values
+#     spent = df['spent'].values
+#     cpc = df['cpc'].values
+#     return n, clicks, impressions, rew_ucb, spent, cpc
+
 def get_data(
         df: pd.DataFrame,
 ):
     # Estraggo i dati dal dataframe
     n = df.shape[0]
-    clicks = df['clicks'].values
-    impressions = df['impressions'].values
-    rew_ucb = df['rew_ucb'].values
-    spent = df['spent'].values
-    cpc = df['cpc'].values
-    return n, clicks, impressions, rew_ucb, spent, cpc
-
-# def get_data(
-#         df: pd.DataFrame,
-# ):
-#     df_copy = df.copy()
-#     # Aggiungo una penalità per le righe con spent = 0
-#     df_copy['new_spent'] = df_copy.apply(lambda x: np.exp(-0.1 * x['rew_ucb']) if x['spent'] == 0 else x['spent'], axis=1)
-#     # Estraggo i dati dal dataframe
-#     n = df_copy.shape[0]
-#     clicks = df_copy['clicks'].values
-#     rew_ucb = df_copy['rew_ucb'].values
-#     spent = df_copy['new_spent'].values
-#     cpc = df_copy['cpc'].values
-#     return n, clicks, rew_ucb, spent, cpc
+    clicks = df['lcb_clicks'].values
+    impressions = df['ucb_impressions'].values
+    return n, clicks, impressions
 
 def solver(
         df: pd.DataFrame,
         n: int,
-        rew_ucb: np.ndarray,
-        clicks: np.ndarray = None,
-        impressions: np.ndarray = None,
+        clicks: np.ndarray,
+        impressions: np.ndarray,
         spent: np.ndarray = None,
         cpc: np.ndarray = None,
         soglia_spent: float = None,
@@ -49,7 +43,7 @@ def solver(
     x = [solver.BoolVar(f'x{i}') for i in range(n)]
     x_np = np.array(x)
     # Funzione obiettivo
-    solver.Maximize(np.dot(rew_ucb, x_np))
+    solver.Maximize(np.dot(clicks, x_np))
     if soglia_clicks is not None:
         # Vincolo Clicks
         solver.Add(-np.dot(clicks, x_np) <= - soglia_clicks)
@@ -61,7 +55,7 @@ def solver(
         solver.Add(np.dot(cpc, x_np) <= soglia_cpc)
     if soglia_ctr is not None:
         # Vincolo CTR
-        solver.Add(np.dot(rew_ucb, x_np) >= soglia_ctr * np.dot(impressions, x_np))
+        solver.Add(np.dot(clicks, x_np) >= soglia_ctr * np.dot(impressions, x_np))
     if soglia_num_publisher is not None:
         # Vincolo Numero Publisher
         solver.Add(sum(x_np) <= soglia_num_publisher)
@@ -85,6 +79,8 @@ def solver(
             print(f"CPC = {results['spent'].sum() / results['clicks'].sum()}")
         if soglia_num_publisher is not None:
             print(f"Numero Publisher = {results.shape[0]}")
+        if soglia_ctr is not None:
+            print(f"CTR = {results['lcb_clicks'].sum() / results['ucb_impressions'].sum()}")
     else:
         print("Knapsack Solver: Non è stata trovata una soluzione ottimale.")
         # Return empty dataframe

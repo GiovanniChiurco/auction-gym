@@ -15,19 +15,15 @@ class CombinatorialLinUCB:
         self.d = d
         self.publisher_list = publisher_list
         self.n_arms = len(publisher_list)
-        # self.A = np.array([np.eye(d) for _ in range(self.n_arms)])
         self.A = {
             publisher.name: np.eye(d) for publisher in publisher_list
         }
-        # self.b = np.array([np.zeros(d) for _ in range(self.n_arms)])
         self.b = {
             publisher.name: np.zeros(d) for publisher in publisher_list
         }
-        # self.theta = np.array([np.zeros(d) for _ in range(self.n_arms)])
         self.theta = {
             publisher.name: np.zeros(d) for publisher in publisher_list
         }
-        # self.p = np.zeros(self.n_arms)
         self.p = {
             publisher.name: 0 for publisher in publisher_list
         }
@@ -138,7 +134,8 @@ class CombinatorialLinUCB:
         self.iteration_stats = concat_df.drop_duplicates(subset=['publisher'], keep='last')
 
     def knapsack_solver(
-            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None, soglia_ctr: float = None
+            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
+            soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
         # Add the UCBs to the dataframe
         self.iteration_stats['rew_ucb'] = self.iteration_stats['publisher'].apply(lambda x: self.p[x])
