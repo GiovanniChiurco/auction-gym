@@ -1,5 +1,6 @@
 from typing import List
 import numpy as np
+import scipy.linalg
 import pandas as pd
 
 from Publisher import Publisher
@@ -53,15 +54,33 @@ class CombinatorialLinUCBNuo:
         self.b_impr[publisher.name] = np.zeros(self.d)
 
     def update_arm(self, publisher: Publisher, run: int, iteration: int):
-        self.conf_bound[publisher.name] = self.alpha * np.sqrt(
-            publisher.embedding.dot(np.linalg.inv(self.A[publisher.name]).dot(publisher.embedding)))
-        A_inv = np.linalg.inv(self.A[publisher.name])
-        # Update click parameters
-        self.theta_click[publisher.name] = A_inv.dot(self.b_click[publisher.name])
-        self.est_click[publisher.name] = self.theta_click[publisher.name].dot(publisher.embedding)
-        # Update impression parameters
-        self.theta_impr[publisher.name] = A_inv.dot(self.b_impr[publisher.name])
-        self.est_impr[publisher.name] = self.theta_impr[publisher.name].dot(publisher.embedding)
+        # Matrix inversion with Cholesky decomposition
+        # if np.all(np.linalg.eigvals(self.A[publisher.name]) > 0):  # Definita positiva
+        # Applica la fattorizzazione di Cholesky
+        # Calcola la fattorizzazione di Cholesky di A (la parte triangolare inferiore di A)
+        L, lower = scipy.linalg.cho_factor(self.A[publisher.name], lower=True)
+        embedding = publisher.embedding  # Salvare embedding per evitare lookup ripetuti
+        # Aggiorna il confine di confidenza usando la fattorizzazione di Cholesky
+        # Risolvi Lx = embedding (forward substitution) e quindi L^Ty = x (back substitution)
+        x = scipy.linalg.cho_solve((L, lower), embedding)
+        self.conf_bound[publisher.name] = self.alpha * np.sqrt(embedding.dot(x))
+        # Aggiorna i parametri click e stima usando la fattorizzazione di Cholesky
+        self.theta_click[publisher.name] = scipy.linalg.cho_solve((L, lower), self.b_click[publisher.name])
+        self.est_click[publisher.name] = np.dot(self.theta_click[publisher.name], embedding)
+        # Aggiorna i parametri impression e stima
+        self.theta_impr[publisher.name] = scipy.linalg.cho_solve((L, lower), self.b_impr[publisher.name])
+        self.est_impr[publisher.name] = np.dot(self.theta_impr[publisher.name], embedding)
+        # else:
+        #     print('Inversione')
+        #     # Matrix inversion with numpy
+        #     A_inv = np.linalg.inv(self.A[publisher.name])
+        #     self.conf_bound[publisher.name] = self.alpha * np.sqrt(publisher.embedding.dot(A_inv.dot(publisher.embedding)))
+        #     # Update click parameters
+        #     self.theta_click[publisher.name] = A_inv.dot(self.b_click[publisher.name])
+        #     self.est_click[publisher.name] = self.theta_click[publisher.name].dot(publisher.embedding)
+        #     # Update impression parameters
+        #     self.theta_impr[publisher.name] = A_inv.dot(self.b_impr[publisher.name])
+        #     self.est_impr[publisher.name] = self.theta_impr[publisher.name].dot(publisher.embedding)
         # Save the parameters
         if self.linucb_params is None:
             self.linucb_params = pd.DataFrame({
@@ -77,6 +96,21 @@ class CombinatorialLinUCBNuo:
                 self.linucb_params,
                 pd.DataFrame({
                     'Iteration': iteration,
+                    'Run': run,
+                    'publisher': publisher.name,
+                    'est_clicks': self.est_click[publisher.name],
+                    'est_impressions': self.est_impr[publisher.name],
+                    'conf_bound': self.conf_bound[publisher.name]
+                }, index=[0])
+            ], ignore_index=True)
+
+    def add_miss_rows(self, publisher_list: List[Publisher], run: int, iteration: int):
+        for publisher in publisher_list:
+            self.linucb_params = pd.concat([
+                self.linucb_params,
+                pd.DataFrame({
+                    'Iteration': iteration,
+                    'Run': run,
                     'publisher': publisher.name,
                     'est_clicks': self.est_click[publisher.name],
                     'est_impressions': self.est_impr[publisher.name],
@@ -85,14 +119,17 @@ class CombinatorialLinUCBNuo:
             ], ignore_index=True)
 
     def round_iteration(
-            self, publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None,
+            self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None,
             soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None, soglia_ctr: float = None) -> List[Publisher]:
         # Check if there are new arms (= new publishers in the list)
-        for publisher in publisher_list:
-            if not self.check_publisher_exist(publisher):
-                self.add_new_arm(publisher)
+        for publisher in curr_publisher_list:
+            # if not self.check_publisher_exist(publisher):
+            #     self.add_new_arm(publisher)
             # Update arms parameters
             self.update_arm(publisher=publisher, run=run, iteration=iteration)
+        # Ripeto i dati già presenti per statistiche successive
+        not_updated_publishers = [publisher for publisher in self.publisher_list if publisher not in curr_publisher_list]
+        self.add_miss_rows(not_updated_publishers, run, iteration)
         # Select the super-arm
         # il parametro publisher_list non viene passato al solver perché i dati necessari sono già presenti nel dataframe iteration_stats
         super_arm = self.knapsack_solver(
@@ -114,14 +151,14 @@ class CombinatorialLinUCBNuo:
         self.b_impr[publisher_name] += impressions * publisher_embedding
 
     def initial_round(
-            self, publisher_list: List[Publisher], iteration: int,
+            self, run: int, iteration: int,
     ):
         # Check if there are new arms (= new publishers in the list)
-        for publisher in publisher_list:
-            if not self.check_publisher_exist(publisher):
-                self.add_new_arm(publisher)
+        for publisher in self.publisher_list:
+            # if not self.check_publisher_exist(publisher):
+            #     self.add_new_arm(publisher)
             # Update arms parameters
-            self.update_arm(publisher=publisher, iteration=iteration)
+            self.update_arm(publisher=publisher, run=run, iteration=iteration)
 
     def check_publisher_exist(self, publisher: Publisher):
         for pub in self.publisher_list:
@@ -133,13 +170,14 @@ class CombinatorialLinUCBNuo:
             self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
+        curr_estimates = self.linucb_params.drop_duplicates(subset=['publisher'], keep='last')
         # Add the UCBs to the dataframe
-        self.linucb_params['lcb_clicks'] = self.linucb_params['est_clicks'] - self.linucb_params['conf_bound']
-        self.linucb_params['ucb_impressions'] = self.linucb_params['est_impressions'] + self.linucb_params['conf_bound']
+        curr_estimates.loc[:, 'lcb_clicks'] = curr_estimates['est_clicks'] - curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'ucb_impressions'] = curr_estimates['est_impressions'] + curr_estimates['conf_bound']
         # Get the data from the dataframe for the solver
-        n, clicks, impressions = get_data(self.linucb_params)
+        n, clicks, impressions = get_data(curr_estimates)
         results = solver(
-            df=self.linucb_params,
+            df=curr_estimates,
             n=n,
             clicks=clicks,
             impressions=impressions,

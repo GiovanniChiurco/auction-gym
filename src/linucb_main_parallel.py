@@ -1,6 +1,7 @@
 import multiprocessing
 from CombinatorialLinUCB_nuo import CombinatorialLinUCBNuo
 from new_main import *
+import time
 
 
 def simulate_auctions_random(
@@ -39,34 +40,43 @@ def simulation_run(
         run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter,
         rounds_per_iter, soglia_ctr, embedding_size, alpha
 ):
+    start_time_run = time.time()
     agent_stats = pd.DataFrame()
     comb_linucb = CombinatorialLinUCBNuo(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list)
     for i in range(num_iter):
-        print(f'Iteration {i}')
+        print(f'Run {run}, Iteration {i}')
+
+        start_time = time.time()
         if i > 1:
             publisher_list = comb_linucb.round_iteration(
-                publisher_list=publisher_list,
+                curr_publisher_list=publisher_list,
                 run=run,
                 iteration=i,
                 soglia_ctr=soglia_ctr
             )
         else:
             publisher_list = init_publisher_list
-            comb_linucb.initial_round(publisher_list=publisher_list, iteration=i)
-        # Simulate auctions randomly
-        simulate_auctions_random(
+            comb_linucb.initial_round(run=run, iteration=i)
+        print(f'Run {run}, Iteration {i}: Round iteration took {time.time() - start_time} seconds')
+
+        start_time = time.time()
+        simulate_auctions_sequentially(
             publisher_list=publisher_list,
             user_contexts=user_contexts,
             sigmoids=sigmoids,
             auction=auction,
-            iteration=i
+            i=i,
+            rounds_per_iter=rounds_per_iter
         )
-        # Update agents bidder models and combinatorial LinUCB
+        print(f'Run {run}, Iteration {i}: Simulate auctions took {time.time() - start_time} seconds')
+
         for agent_id, agent in enumerate(auction.agents):
-            # Update agent
+            start_time = time.time()
             agent.update(iteration=i)
-            # Update LinUCB
+            print(f'Run {run}, Iteration {i}: Agent update took {time.time() - start_time} seconds')
+
             if agent.name.startswith('Nostro'):
+                start_time = time.time()
                 agent_stats_pub = agent.iteration_stats_per_publisher()
                 for publisher_data in agent_stats_pub:
                     comb_linucb.update(
@@ -76,6 +86,9 @@ def simulation_run(
                         impressions=publisher_data['impressions'],
                         iteration=i
                     )
+                print(f'Run {run}, Iteration {i}: Combinatorial LinUCB update took {time.time() - start_time} seconds')
+
+                start_time = time.time()
                 agent_df = pd.DataFrame(agent_stats_pub)
                 agent_df['Agent'] = agent.name
                 agent_df['Iteration'] = i
@@ -84,19 +97,25 @@ def simulation_run(
                     agent_stats = agent_df
                 else:
                     agent_stats = pd.concat([agent_stats, agent_df])
+                print(f'Run {run}, Iteration {i}: Agent stats update took {time.time() - start_time} seconds')
 
             agent.clear_utility()
             agent.clear_logs()
 
         auction.clear_revenue()
 
+    start_time = time.time()
     linucb_params = comb_linucb.linucb_params
     merged_df = pd.merge(
         agent_stats,
         linucb_params,
-        on=['publisher', 'Iteration'],
-        how='left'  # LinUCB at every round updates the parameters of all the arms, also the ones not selected
+        on=['publisher', 'Iteration', 'Run'],
+        how='left'
     )
+    print(f'Run {run}: Merging data took {time.time() - start_time} seconds')
+
+    print(f'Run {run} took {time.time() - start_time_run} seconds')
+
     return agent_stats, merged_df
 
 
@@ -141,6 +160,6 @@ if __name__ == "__main__":
              for run in range(num_runs)]
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=4) as pool:
+    with multiprocessing.Pool(processes=2) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')

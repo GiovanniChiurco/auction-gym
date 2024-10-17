@@ -1,6 +1,6 @@
 {
   "random_seed": 0,
-  "num_runs": 100,
+  "num_runs": 2,
   "num_iter" : 100,
   "rounds_per_iter": 200,
   "num_participants_per_round": 4,
