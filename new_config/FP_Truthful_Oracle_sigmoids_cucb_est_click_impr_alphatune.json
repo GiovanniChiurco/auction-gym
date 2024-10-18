@@ -1,7 +1,7 @@
 {
   "random_seed": 0,
-  "num_runs": 100,
-  "num_iter" : 100,
+  "num_runs": 150,
+  "num_iter" : 150,
   "rounds_per_iter": 200,
   "num_participants_per_round": 4,
   "embedding_size": 70,
@@ -111,7 +111,7 @@
       }
     }
   ],
-  "output_dir": "results/FP_Truthful_Oracle_sigmoids_linucb_est_click_impr/",
+  "output_dir": "results/FP_Truthful_Oracle_sigmoids_cucb_est_click_impr_alphatune/",
   "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/ad_embeddings_red_70.pkl",
   "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/sites_embeddings_red_70.pkl"
 }

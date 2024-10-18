@@ -3,22 +3,30 @@ from ortools.linear_solver import pywraplp
 import numpy as np
 
 
+# def get_data(
+#         df: pd.DataFrame,
+# ):
+#     # Estraggo i dati dal dataframe
+#     n = df.shape[0]
+#     clicks = df['clicks'].values
+#     rew_ucb = df['rew_ucb'].values
+#     impressions = df['impressions'].values
+#     spent = df['spent'].values
+#     cpc = df['cpc'].values
+#     return n, clicks, rew_ucb, impressions, spent, cpc
+
 def get_data(
         df: pd.DataFrame,
 ):
     # Estraggo i dati dal dataframe
     n = df.shape[0]
-    clicks = df['clicks'].values
-    rew_ucb = df['rew_ucb'].values
-    impressions = df['impressions'].values
-    spent = df['spent'].values
-    cpc = df['cpc'].values
-    return n, clicks, rew_ucb, impressions, spent, cpc
+    clicks = df['lcb_clicks'].values
+    impressions = df['ucb_impressions'].values
+    return n, clicks, impressions
 
 def solver(
         df: pd.DataFrame,
         n: int,
-        rew_ucb: np.ndarray,
         clicks: np.ndarray = None,
         impressions: np.ndarray = None,
         spent: np.ndarray = None,
@@ -35,7 +43,7 @@ def solver(
     x = [solver.BoolVar(f'x{i}') for i in range(n)]
     x_np = np.array(x)
     # Funzione obiettivo
-    solver.Maximize(np.dot(rew_ucb, x_np))
+    solver.Maximize(np.dot(clicks, x_np))
     if soglia_clicks is not None:
         # Vincolo Clicks
         solver.Add(np.dot(clicks, x_np) >= soglia_clicks)
@@ -47,7 +55,7 @@ def solver(
         solver.Add(np.dot(cpc, x_np) <= soglia_cpc)
     if soglia_ctr is not None:
         # Vincolo CTR
-        solver.Add(np.dot(rew_ucb, x_np) >= soglia_ctr * np.dot(impressions, x_np))
+        solver.Add(np.dot(clicks, x_np) >= soglia_ctr * np.dot(impressions, x_np))
     if soglia_num_publisher is not None:
         # Vincolo Numero Publisher
         solver.Add(sum(x_np) <= soglia_num_publisher)
@@ -64,11 +72,11 @@ def solver(
                     results = pd.concat([results, df.iloc[[i]]])
         print("Knapsack Solver: Soluzione ottimale trovata!")
         print(f"Valore obiettivo = {round(solver.Objective().Value(), 3)}")
-        impressions_sum = results['impressions'].sum()
-        if impressions_sum != 0:
-            print(f"CTR = {round(results['clicks'].sum() / impressions_sum * 100, 3)}%")
-        else:
-            print(f"CTR = {0}%")
+        if soglia_ctr is not None:
+            if results['ucb_impressions'].sum() != 0:
+                print(f"CTR = {results['lcb_clicks'].sum() / results['ucb_impressions'].sum()}")
+            else:
+                print("CTR = undefined (division by zero)")
     else:
         print("Knapsack Solver: Non è stata trovata una soluzione ottimale.")
         # Return empty dataframe

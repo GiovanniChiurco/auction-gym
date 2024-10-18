@@ -80,7 +80,10 @@ def solver(
         if soglia_num_publisher is not None:
             print(f"Numero Publisher = {results.shape[0]}")
         if soglia_ctr is not None:
-            print(f"CTR = {results['lcb_clicks'].sum() / results['ucb_impressions'].sum()}")
+            if results['ucb_impressions'].sum() != 0:
+                print(f"CTR = {results['lcb_clicks'].sum() / results['ucb_impressions'].sum()}")
+            else:
+                print("CTR = undefined (division by zero)")
     else:
         print("Knapsack Solver: Non è stata trovata una soluzione ottimale.")
         # Return empty dataframe

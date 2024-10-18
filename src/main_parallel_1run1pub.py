@@ -1,7 +1,5 @@
 import multiprocessing
-from CombinatorialLinUCB_nuo import CombinatorialLinUCBNuo
 from new_main import *
-import time
 
 
 def simulate_auctions_random(
@@ -37,29 +35,13 @@ def simulate_auctions_sequentially(
 
 
 def simulation_run(
-        run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter,
-        rounds_per_iter, soglia_ctr, embedding_size, alpha
+        run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter
 ):
-    start_time_run = time.time()
     agent_stats = pd.DataFrame()
-    comb_linucb = CombinatorialLinUCBNuo(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list)
+    publisher_list=init_publisher_list
     for i in range(num_iter):
-        print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}')
-
-        start_time = time.time()
-        if i > 1:
-            publisher_list = comb_linucb.round_iteration(
-                curr_publisher_list=publisher_list,
-                run=run,
-                iteration=i,
-                soglia_ctr=soglia_ctr
-            )
-        else:
-            publisher_list = init_publisher_list
-            comb_linucb.initial_round(run=run, iteration=i)
-        print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Round iteration took {time.time() - start_time} seconds')
-
-        start_time = time.time()
+        print(f'Iteration {i}')
+        # Simulate auctions randomly
         simulate_auctions_sequentially(
             publisher_list=publisher_list,
             user_contexts=user_contexts,
@@ -68,69 +50,47 @@ def simulation_run(
             i=i,
             rounds_per_iter=rounds_per_iter
         )
-        print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Simulate auctions took {time.time() - start_time} seconds')
-
+        # Update agents bidder models and combinatorial LinUCB
         for agent_id, agent in enumerate(auction.agents):
-            start_time = time.time()
+            # Update agent
             agent.update(iteration=i)
-            # print(f'Run {run}, Iteration {i}: Agent update took {time.time() - start_time} seconds')
-
+            # Update LinUCB
             if agent.name.startswith('Nostro'):
-                start_time = time.time()
                 agent_stats_pub = agent.iteration_stats_per_publisher()
-                for publisher_data in agent_stats_pub:
-                    comb_linucb.update(
-                        publisher_name=publisher_data['publisher'],
-                        publisher_embedding=init_publisher_embeddings[publisher_data['publisher']],
-                        clicks=publisher_data['clicks'],
-                        impressions=publisher_data['impressions'],
-                        iteration=i
-                    )
-                print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Combinatorial LinUCB update took {time.time() - start_time} seconds')
-
-                start_time = time.time()
                 agent_df = pd.DataFrame(agent_stats_pub)
                 agent_df['Agent'] = agent.name
                 agent_df['Iteration'] = i
-                agent_df['Run'] = run
                 if i == 0:
                     agent_stats = agent_df
                 else:
                     agent_stats = pd.concat([agent_stats, agent_df])
-                print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Agent stats update took {time.time() - start_time} seconds')
+                grouped_data = agent_df.groupby(by=['publisher']) \
+                    .sum() \
+                    .reset_index() \
+                    [['publisher', 'impressions', 'lost_auctions', 'clicks', 'spent']]
+                grouped_data['cpc'] = grouped_data.apply(
+                    lambda row: row['spent'] / row['clicks'] if row['clicks'] > 0 else 0, axis=1)
 
             agent.clear_utility()
             agent.clear_logs()
 
         auction.clear_revenue()
-
-    linucb_params = comb_linucb.linucb_params
-    merged_df = pd.merge(
-        agent_stats,
-        linucb_params,
-        on=['publisher', 'Iteration', 'Run'],
-        how='left'
-    )
-
-    print(f'Run {run} took {time.time() - start_time_run} seconds')
-
-    return agent_stats, merged_df
+    return agent_stats
 
 
-def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha):
-    print(f'[RUN {run}] Running simulation with soglia_ctr = {soglia_ctr} and alpha = {alpha}')
+def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter):
+    pub_name = init_publisher_list[0].name
+
+    print(f'Running simulation with publishers: {pub_name}')
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
-    start_gen_deal = time.time()
     user_contexts, sigmoids = initialize_deal(num_iter, rounds_per_iter, embedding_size, 0.01,
                                               init_publisher_embeddings, adv_embeddings)
-    print(f'Generating deal took {time.time() - start_gen_deal} seconds')
 
-    budget_results = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
-    agent_stats, lin_ucb_params = budget_results
+    agent_stats = simulation_run(run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter)
 
-    lin_ucb_params.to_csv(
-        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
+    agent_stats.to_csv(
+        os.path.join(output_dir, f'agent_stats_pub_{pub_name}.csv'), index=False)
 
 
 if __name__ == "__main__":
@@ -145,20 +105,16 @@ if __name__ == "__main__":
                                                                          agents, max_slots, embedding_size,
                                                                          embedding_var, obs_embedding_size)
     publishers = instantiate_publishers(publisher_embeddings, rounds_per_iter)
-
+    
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-
-    rng.shuffle(publishers)
-    init_publisher_list = publishers[:300]
-
-    soglia_ctr = 0.97
-    alpha_list = [1.7, 2, 3]
     
-    tasks = []
-    for alpha in alpha_list:
-        for run in range(num_runs):
-            tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha))
+    init_publisher_list = publishers
+
+    single_publishers = [[publisher] for publisher in init_publisher_list]
+    
+    tasks = [(output_dir, 1, single_publisher, auction, num_iter, rounds_per_iter)
+             for single_publisher in single_publishers]
 
     start_time = time.time()
     with multiprocessing.Pool(processes=16) as pool:

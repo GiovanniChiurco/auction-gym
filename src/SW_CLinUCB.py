@@ -8,14 +8,15 @@ from Publisher_Reward import PublisherReward
 from KnapsackSolver import get_data, solver
 
 
-class CombinatorialLinUCBNuo:
-    """ LinUCB algorithm """
-    def __init__(self, alpha: float, d: int, publisher_list: List[Publisher]):
+class SWCLinUCB:
+    """ Sliding Window Combinatorial LinUCB algorithm """
+    def __init__(self, alpha: float, d: int, publisher_list: List[Publisher], window_size: int):
         self.alpha = alpha
         # Embedding size
         self.d = d
         self.publisher_list = publisher_list
         self.n_arms = len(publisher_list)
+        self.window_size = window_size
         self.A = {
             publisher.name: np.eye(d) for publisher in publisher_list
         }
@@ -54,9 +55,6 @@ class CombinatorialLinUCBNuo:
         self.b_impr[publisher.name] = np.zeros(self.d)
 
     def update_arm(self, publisher: Publisher, run: int, iteration: int):
-        # Matrix inversion with Cholesky decomposition
-        # if np.all(np.linalg.eigvals(self.A[publisher.name]) > 0):  # Definita positiva
-        # Applica la fattorizzazione di Cholesky
         # Calcola la fattorizzazione di Cholesky di A (la parte triangolare inferiore di A)
         L, lower = scipy.linalg.cho_factor(self.A[publisher.name], lower=True)
         embedding = publisher.embedding  # Salvare embedding per evitare lookup ripetuti
@@ -70,17 +68,6 @@ class CombinatorialLinUCBNuo:
         # Aggiorna i parametri impression e stima
         self.theta_impr[publisher.name] = scipy.linalg.cho_solve((L, lower), self.b_impr[publisher.name])
         self.est_impr[publisher.name] = np.dot(self.theta_impr[publisher.name], embedding)
-        # else:
-        #     print('Inversione')
-        #     # Matrix inversion with numpy
-        #     A_inv = np.linalg.inv(self.A[publisher.name])
-        #     self.conf_bound[publisher.name] = self.alpha * np.sqrt(publisher.embedding.dot(A_inv.dot(publisher.embedding)))
-        #     # Update click parameters
-        #     self.theta_click[publisher.name] = A_inv.dot(self.b_click[publisher.name])
-        #     self.est_click[publisher.name] = self.theta_click[publisher.name].dot(publisher.embedding)
-        #     # Update impression parameters
-        #     self.theta_impr[publisher.name] = A_inv.dot(self.b_impr[publisher.name])
-        #     self.est_impr[publisher.name] = self.theta_impr[publisher.name].dot(publisher.embedding)
         # Save the parameters
         if self.linucb_params is None:
             self.linucb_params = pd.DataFrame({

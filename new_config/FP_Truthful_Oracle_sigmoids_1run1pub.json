@@ -1,6 +1,6 @@
 {
   "random_seed": 0,
-  "num_runs": 100,
+  "num_runs": 1,
   "num_iter" : 100,
   "rounds_per_iter": 200,
   "num_participants_per_round": 4,
@@ -111,7 +111,7 @@
       }
     }
   ],
-  "output_dir": "results/FP_Truthful_Oracle_sigmoids_linucb_est_click_impr/",
+  "output_dir": "results/FP_Truthful_Oracle_sigmoids_1run1pub/",
   "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/ad_embeddings_red_70.pkl",
   "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/sites_embeddings_red_70.pkl"
 }
