@@ -1,5 +1,6 @@
 import multiprocessing
 from CUCBNuo import CUCBNuo
+from SWCUCB import SWCUCB
 from new_main import *
 
 
@@ -36,10 +37,10 @@ def simulate_auctions_sequentially(
 
 
 def simulation_run(
-        run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha
+        run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, window_size
 ):
     agent_stats = pd.DataFrame()
-    cucb = CUCBNuo(publisher_list=init_publisher_list, alpha=alpha)
+    cucb = SWCUCB(publisher_list=init_publisher_list, alpha=alpha, window_size=window_size)
     for i in range(num_iter):
         print(f'Iteration {i}, run {run}, alpha {alpha}, soglia_ctr {soglia_ctr}')
         if i > 1:
@@ -97,8 +98,8 @@ def simulation_run(
     return agent_stats, merged_df
 
 
-def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha):
-    print(f'[RUN {run}] Running simulation with soglia_ctr = {soglia_ctr} e alpha = {alpha}')
+def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, window_size):
+    print(f'[RUN {run}] Running simulation with soglia_ctr = {soglia_ctr} e alpha = {alpha} e window_size = {window_size}')
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
     start_gen_deal = time.time()
@@ -106,11 +107,17 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
                                               init_publisher_embeddings, adv_embeddings)
     print(f'Generating deal took {time.time() - start_gen_deal} seconds')
 
-    budget_results = simulation_run(run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha)
+    budget_results = simulation_run(run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, window_size)
     agent_stats, lin_ucb_params = budget_results
 
     lin_ucb_params.to_csv(
-        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
+        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
+    
+    grouped_cucb_results_run_iter = lin_ucb_params.groupby(['Iteration']) \
+        .agg({'clicks': 'sum', 'impressions': 'sum', 'true_clicks': 'sum'}) \
+        .reset_index()
+    grouped_cucb_results_run_iter.to_csv(
+        os.path.join(output_dir, f'grouped_results_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
 
 
 if __name__ == "__main__":
@@ -130,12 +137,14 @@ if __name__ == "__main__":
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
 
-    alpha_list = [1.7, 3]
+    window_size_list = [10, 20, 50, 100, 150]
+    alpha_list = [0, 0.2, 0.5, 1, 1.2, 1.5]
     soglia_ctr = 0.97
     tasks = []
-    for alpha in alpha_list:
-        for run in range(num_runs):
-            tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha))
+    for window_size in window_size_list:
+        for alpha in alpha_list:
+            for run in range(num_runs):
+                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, window_size))
 
     start_time = time.time()
     with multiprocessing.Pool(processes=16) as pool:

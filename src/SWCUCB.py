@@ -23,6 +23,10 @@ class SWCUCB:
         self.window_impressions = {
             publisher.name: deque(maxlen=window_size) for publisher in publisher_list
         }
+        # Current window Na
+        self.window_Na = {
+            publisher.name: deque(maxlen=window_size) for publisher in publisher_list
+        }
         # Expected clicks
         self.exp_clicks = {
             publisher.name: 0 for publisher in publisher_list
@@ -41,11 +45,18 @@ class SWCUCB:
         self.est_ucb = None
 
     def update_arm(self, publisher_name: str, clicks: float, impressions: int, run: int, iteration: int):
+        self.window_Na[publisher_name].append(1)
+
         self.window_clicks[publisher_name].append(clicks)
         self.window_impressions[publisher_name].append(impressions)
 
-        self.exp_clicks[publisher_name] = np.mean(self.window_clicks[publisher_name])
-        self.exp_impressions[publisher_name] = np.mean(self.window_impressions[publisher_name])
+        curr_Na = np.sum(self.window_Na[publisher_name])
+
+        curr_clicks = np.sum(self.window_clicks[publisher_name])
+        curr_impressions = np.sum(self.window_impressions[publisher_name])
+
+        self.exp_clicks[publisher_name] = curr_clicks / curr_Na
+        self.exp_impressions[publisher_name] = curr_impressions / curr_Na
         # Save the parameters
         if self.est_ucb is None:
             self.est_ucb = pd.DataFrame({
@@ -70,9 +81,13 @@ class SWCUCB:
             ])
 
     def update(self, publisher_name: str):
-        adj_term = np.sqrt((2 * np.log(np.min(self.window_size, self.t))) / (len(self.window_clicks[publisher_name])))
+        curr_Na = np.sum(self.window_Na[publisher_name])
+        if curr_Na == 0:
+            adj_term = 0 
+        else:
+            adj_term = np.sqrt((2 * np.log(min(self.window_size, self.t))) / curr_Na)
 
-        self.conf_bound[publisher_name] = adj_term
+        self.conf_bound[publisher_name] = self.alpha * adj_term
 
     def knapsack_solver(
             self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
@@ -96,7 +111,7 @@ class SWCUCB:
             soglia_ctr=soglia_ctr
         )
         if results.empty:
-            results = self.iteration_stats
+            results = curr_estimates
         publisher_names = results['publisher'].unique()
 
         return [
@@ -121,6 +136,12 @@ class SWCUCB:
             soglia_num_publisher=soglia_num_publisher,
             soglia_ctr=soglia_ctr
         )
+        # Add 0s to the window for the publishers not selected
+        for publisher in self.publisher_list:
+            if publisher not in selected_publishers:
+                self.window_clicks[publisher.name].append(0)
+                self.window_impressions[publisher.name].append(0)
+                self.window_Na[publisher.name].append(0)
         return selected_publishers
 
     def set_time_t(self, t: int):
