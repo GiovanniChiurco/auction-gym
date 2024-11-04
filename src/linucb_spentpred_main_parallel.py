@@ -1,5 +1,7 @@
 import multiprocessing
+from CLinUCB_SpentPrediction import CLinUCBNuo_SpentPrediction
 from CombinatorialLinUCB_nuo import CombinatorialLinUCBNuo
+from SpentPredictor import SpentPredictor
 from new_main import *
 import time
 import pickle
@@ -76,21 +78,37 @@ def simulation_run(
 ):
     start_time_run = time.time()
     agent_stats = pd.DataFrame()
-    comb_linucb = CombinatorialLinUCBNuo(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list)
+    comb_linucb = CLinUCBNuo_SpentPrediction(alpha=alpha, d=embedding_size+2, publisher_list=init_publisher_list)
+    spent_predictor = SpentPredictor(alpha=alpha, d=embedding_size+1, publisher_list=init_publisher_list)
     for i in range(num_iter):
         print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}')
 
         start_time = time.time()
         if i > 1:
+            # Update the spent predictor
+            spent_predictor.round_iteration(
+                curr_publisher_list=publisher_list,
+                run=run,
+                iteration=i
+            )
+            predicted_spent = spent_predictor.est_spent
+            # Update the combinatorial linucb with the new predicted spent
             publisher_list = comb_linucb.round_iteration(
                 curr_publisher_list=publisher_list,
                 run=run,
                 iteration=i,
+                predicted_spent=predicted_spent,
                 soglia_ctr=soglia_ctr
             )
         else:
             publisher_list = init_publisher_list
-            comb_linucb.initial_round(run=run, iteration=i)
+            spent_predictor.round_iteration(
+                curr_publisher_list=publisher_list,
+                run=run,
+                iteration=i
+            )
+            predicted_spent = spent_predictor.est_spent
+            comb_linucb.initial_round(run=run, iteration=i, predicted_spent=predicted_spent)
         print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Round iteration took {time.time() - start_time} seconds')
 
         start_time = time.time()
@@ -113,12 +131,17 @@ def simulation_run(
                 start_time = time.time()
                 agent_stats_pub = agent.iteration_stats_per_publisher()
                 for publisher_data in agent_stats_pub:
+                    spent_predictor.update(
+                        publisher_name=publisher_data['publisher'],
+                        publisher_embedding=init_publisher_embeddings[publisher_data['publisher']],
+                        spent=publisher_data['spent']
+                    )
                     comb_linucb.update(
                         publisher_name=publisher_data['publisher'],
                         publisher_embedding=init_publisher_embeddings[publisher_data['publisher']],
                         clicks=publisher_data['clicks'],
                         impressions=publisher_data['impressions'],
-                        iteration=i
+                        predicted_spent=predicted_spent[publisher_data['publisher']]
                     )
                 print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Combinatorial LinUCB update took {time.time() - start_time} seconds')
 
@@ -167,11 +190,6 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
 
     merged_df.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
-    
-    # with open(os.path.join(output_dir, f'model_params/linucb_theta_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
-    #     pickle.dump(linucb_theta_click, f)
-    # with open(os.path.join(output_dir, f'model_params/linucb_theta_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
-    #     pickle.dump(linucb_theta_impressions, f)
 
 
 if __name__ == "__main__":
@@ -194,11 +212,11 @@ if __name__ == "__main__":
     # if not os.path.exists(os.path.join(output_dir, 'model_params')):
     #     os.makedirs(os.path.join(output_dir, 'model_params'))
 
-    # rng.shuffle(publishers)
-    init_publisher_list = publishers[:20]
+    rng.shuffle(publishers)
+    init_publisher_list = publishers[:300]
 
     soglia_ctr = 0.97
-    alpha_list = [0]
+    alpha_list = [1]
     
     tasks = []
     for alpha in alpha_list:
@@ -211,5 +229,5 @@ if __name__ == "__main__":
     print(f'Total time: {time.time() - start_time}')
 
     # Save grouped results
-    # grouped_results = read_results(output_dir)
-    # grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
+    grouped_results = read_results(output_dir)
+    grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)

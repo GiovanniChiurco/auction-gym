@@ -37,10 +37,10 @@ def simulate_auctions_sequentially(
 
 
 def simulation_run(
-        run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter
+        run, output_dir, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter
 ):
     publisher_list=init_publisher_list
-    output_file = os.path.join(output_dir, f'agent_stats_run_{run}_pub_{init_publisher_list[0].name}.csv')
+    output_file = os.path.join(output_dir, f'agent_stats_run_{run}.csv')
     for i in range(num_iter):
         print(f'Iteration {i}')
         # Simulate auctions randomly
@@ -61,6 +61,7 @@ def simulation_run(
                 agent_stats_pub = agent.iteration_stats_per_publisher()
                 agent_df = pd.DataFrame(agent_stats_pub)
                 agent_df['Agent'] = agent.name
+                agent_df['Run'] = run
                 agent_df['Iteration'] = i
                 if i == 0:
                     agent_df.to_csv(output_file, mode='a', header=True, index=False)
@@ -75,27 +76,17 @@ def simulation_run(
 
 
 def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter):
-    pub_name = init_publisher_list[0].name
-
-    print(f'Running simulation with publishers: {pub_name}')
-
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
     user_contexts, sigmoids = initialize_deal(num_iter, rounds_per_iter, embedding_size, 0.01,
                                               init_publisher_embeddings, adv_embeddings)
 
-    simulation_run(run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter)
+    simulation_run(run, output_dir, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter)
 
 def read_pubs():
-    dir = 'results/FP_DM_Oracle_sigmoids_1run1pub/'
-    with open(dir + 'missed_pubs.json') as f:
+    dir = 'results/FP_Truthful_Oracle_sigmoids_cucb_est_click_impr_alphatune/'
+    with open(dir + '300pubs.json') as f:
         pubs = json.load(f)
     return pubs
-
-# def read_pubs():
-#     dir = 'results/FP_Truthful_Oracle_sigmoids_cucb_est_click_impr_alphatune/'
-#     with open(dir + '300pubs.json') as f:
-#         pubs = json.load(f)
-#     return pubs
 
 
 if __name__ == "__main__":
@@ -116,13 +107,10 @@ if __name__ == "__main__":
 
     all_pubs = read_pubs()
     init_publisher_list = [publisher for publisher in publishers if publisher.name in all_pubs]
-
-    single_publishers = [[publisher] for publisher in init_publisher_list]
     
     tasks = []
     for run in range(num_runs):
-        for single_publisher in single_publishers:
-            tasks.append((output_dir, run, single_publisher, auction, num_iter, rounds_per_iter))
+        tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter))
 
     start_time = time.time()
     with multiprocessing.Pool(processes=16) as pool:

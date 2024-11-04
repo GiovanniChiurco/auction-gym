@@ -2,6 +2,49 @@ import multiprocessing
 from CUCBNuo import CUCBNuo
 from SWCUCB import SWCUCB
 from new_main import *
+import re
+
+
+def read_results(result_dir: str) -> pd.DataFrame:
+    # Leggo i file
+    files_to_read = [file for file in os.listdir(result_dir) if file.endswith('.csv')]
+    pattern = r'agent_stats_run_(\d+)_ctr_(\d+\.?\d*)_alpha_(\d+\.?\d*)'
+    files_per_alpha = {}
+    for file in files_to_read:
+        match = re.search(pattern, file)
+        if match:
+            alpha = float(match.group(3))
+            if alpha not in files_per_alpha:
+                files_per_alpha[alpha] = [file]
+            else:
+                files_per_alpha[alpha].append(file)
+    # Carico i risultati su un unico dataframe aggiungendo la colonna alpha
+    results = pd.DataFrame()
+    for alpha, files in files_per_alpha.items():
+        for file in files:
+            curr_results = pd.read_csv(result_dir + file)
+            curr_results['alpha'] = alpha
+            results = pd.concat([results, curr_results])
+    # Prima raggruppo per Run e Iteration per avere il dato aggregato per ogni iterazione
+    grouped_results_run_iter = results.groupby(['alpha', 'Run', 'Iteration']) \
+        .agg({'clicks': 'sum', 'impressions': 'sum', 'true_clicks': 'sum'}) \
+        .reset_index()
+    # Valori medi sulle run per ogni iterazione
+    grouped_results = grouped_results_run_iter.groupby(['alpha', 'Iteration']).mean().reset_index()
+    # intervallo di confidenza click
+    grouped_results['clicks_std'] = grouped_results_run_iter.groupby(['alpha', 'Iteration']).std().reset_index()['clicks']
+    grouped_results['clicks_ci'] = 1.96 * grouped_results['clicks_std'] / grouped_results_run_iter.groupby(['alpha', 'Iteration']).count().reset_index()['clicks']
+    # intervallo di confidenza true_clicks
+    grouped_results['true_clicks_std'] = grouped_results_run_iter.groupby(['alpha', 'Iteration']).std().reset_index()['true_clicks']
+    grouped_results['true_clicks_ci'] = 1.96 * grouped_results['true_clicks_std'] / grouped_results_run_iter.groupby(['alpha', 'Iteration']).count().reset_index()['true_clicks']
+    # intervallo di confidenza impressions
+    grouped_results['impressions_std'] = grouped_results_run_iter.groupby(['alpha', 'Iteration']).std().reset_index()['impressions']
+    grouped_results['impressions_ci'] = 1.96 * grouped_results['impressions_std'] / grouped_results_run_iter.groupby(['alpha', 'Iteration']).count().reset_index()['impressions']
+    # Calcolo CTR e true CTR
+    grouped_results['ctr'] = grouped_results['clicks'] / grouped_results['impressions']
+    grouped_results['true_ctr'] = grouped_results['true_clicks'] / grouped_results['impressions']
+
+    return grouped_results
 
 
 def simulate_auctions_random(
@@ -45,7 +88,9 @@ def simulation_run(
         print(f'Iteration {i}, run {run}, alpha {alpha}, soglia_ctr {soglia_ctr}')
         if i > 1:
             publisher_list = cucb.round_iteration(
-                soglia_ctr=soglia_ctr
+                run=run,
+                iteration=i,
+                soglia_ctr=soglia_ctr,
             )
         else:
             cucb.set_time_t(i+1)
@@ -70,9 +115,7 @@ def simulation_run(
                     cucb.update_arm(
                         publisher_name=publisher_data['publisher'],
                         clicks=publisher_data['clicks'],
-                        impressions=publisher_data['impressions'],
-                        run=run,
-                        iteration=i
+                        impressions=publisher_data['impressions']
                     )
                 agent_df = pd.DataFrame(agent_stats_pub)
                 agent_df['Agent'] = agent.name
@@ -113,12 +156,6 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
     lin_ucb_params.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
     
-    grouped_cucb_results_run_iter = lin_ucb_params.groupby(['Iteration']) \
-        .agg({'clicks': 'sum', 'impressions': 'sum', 'true_clicks': 'sum'}) \
-        .reset_index()
-    grouped_cucb_results_run_iter.to_csv(
-        os.path.join(output_dir, f'grouped_results_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -137,8 +174,8 @@ if __name__ == "__main__":
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
 
-    window_size_list = [10, 20, 50, 100, 150]
-    alpha_list = [0, 0.2, 0.5, 1, 1.2, 1.5]
+    window_size_list = [70]
+    alpha_list = [0]
     soglia_ctr = 0.97
     tasks = []
     for window_size in window_size_list:
@@ -150,3 +187,7 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes=16) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
+
+    # Save grouped results
+    grouped_results = read_results(output_dir)
+    grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)

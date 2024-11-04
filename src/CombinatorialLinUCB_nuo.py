@@ -45,6 +45,9 @@ class CombinatorialLinUCBNuo:
         }
         self.linucb_params = None
 
+    def save_params(self):
+        return self.theta_click, self.theta_impr
+
     def add_new_arm(self, publisher: Publisher):
         self.n_arms += 1
         self.publisher_list.append(publisher.name)
@@ -104,6 +107,16 @@ class CombinatorialLinUCBNuo:
                 }, index=[0])
             ], ignore_index=True)
 
+    def extract_estimates(self, run: int, iteration: int):
+        click_estimates = pd.DataFrame(self.est_click.items(), columns=['publisher', 'est_clicks'])
+        impr_estimates = pd.DataFrame(self.est_impr.items(), columns=['publisher', 'est_impressions'])
+        confidence_bounds = pd.DataFrame(self.conf_bound.items(), columns=['publisher', 'conf_bound'])
+        estimates = pd.merge(click_estimates, impr_estimates, on='publisher')
+        estimates = pd.merge(estimates, confidence_bounds, on='publisher')
+        estimates['Run'] = run
+        estimates['Iteration'] = iteration
+        return estimates
+
     def add_miss_rows(self, publisher_list: List[Publisher], run: int, iteration: int):
         for publisher in publisher_list:
             self.linucb_params = pd.concat([
@@ -128,11 +141,13 @@ class CombinatorialLinUCBNuo:
             # Update arms parameters
             self.update_arm(publisher=publisher, run=run, iteration=iteration)
         # Ripeto i dati già presenti per statistiche successive
-        not_updated_publishers = [publisher for publisher in self.publisher_list if publisher not in curr_publisher_list]
-        self.add_miss_rows(not_updated_publishers, run, iteration)
+        # not_updated_publishers = [publisher for publisher in self.publisher_list if publisher not in curr_publisher_list]
+        # self.add_miss_rows(not_updated_publishers, run, iteration)
         # Select the super-arm
         # il parametro publisher_list non viene passato al solver perché i dati necessari sono già presenti nel dataframe iteration_stats
         super_arm = self.knapsack_solver(
+            run=run,
+            iteration=iteration,
             soglia_spent=soglia_spent,
             soglia_clicks=soglia_clicks,
             soglia_cpc=soglia_cpc,
@@ -167,20 +182,25 @@ class CombinatorialLinUCBNuo:
         return False
 
     def knapsack_solver(
-            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
+            self, run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
-        curr_estimates = self.linucb_params.drop_duplicates(subset=['publisher'], keep='last')
+        # curr_estimates = self.linucb_params.drop_duplicates(subset=['publisher'], keep='last')
+        curr_estimates = self.extract_estimates(run=run, iteration=iteration)
         # Add the UCBs to the dataframe
+        curr_estimates.loc[:, 'ucb_clicks'] = curr_estimates['est_clicks'] + curr_estimates['conf_bound']
         curr_estimates.loc[:, 'lcb_clicks'] = curr_estimates['est_clicks'] - curr_estimates['conf_bound']
         curr_estimates.loc[:, 'ucb_impressions'] = curr_estimates['est_impressions'] + curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'lcb_impressions'] = curr_estimates['est_impressions'] - curr_estimates['conf_bound']
         # Get the data from the dataframe for the solver
-        n, clicks, impressions = get_data(curr_estimates)
+        n, ucb_clicks, lcb_clicks, ucb_impressions, lcb_impressions = get_data(curr_estimates)
         results = solver(
             df=curr_estimates,
             n=n,
-            clicks=clicks,
-            impressions=impressions,
+            ucb_clicks=ucb_clicks,
+            lcb_clicks=lcb_clicks,
+            ucb_impressions=ucb_impressions,
+            lcb_impressions=lcb_impressions,
             soglia_spent=soglia_spent,
             soglia_clicks=soglia_clicks,
             soglia_cpc=soglia_cpc,
@@ -188,7 +208,8 @@ class CombinatorialLinUCBNuo:
             soglia_ctr=soglia_ctr
         )
         if results.empty:
-            results = self.linucb_params
+            results = curr_estimates
+        
         publisher_names = results['publisher'].unique()
         return [
             publisher

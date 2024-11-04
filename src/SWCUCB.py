@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 pd.options.mode.chained_assignment = None
 from Publisher import Publisher
-from KnapsackSolver_CTR import get_data, solver
+from KnapsackSolver import get_data, solver
 
 
 class SWCUCB:
@@ -44,7 +44,7 @@ class SWCUCB:
         # Dataframe with LinUCB parameters per iteration
         self.est_ucb = None
 
-    def update_arm(self, publisher_name: str, clicks: float, impressions: int, run: int, iteration: int):
+    def update_arm(self, publisher_name: str, clicks: float, impressions: int):
         self.window_Na[publisher_name].append(1)
 
         self.window_clicks[publisher_name].append(clicks)
@@ -57,6 +57,15 @@ class SWCUCB:
 
         self.exp_clicks[publisher_name] = curr_clicks / curr_Na
         self.exp_impressions[publisher_name] = curr_impressions / curr_Na
+
+    def update(self, publisher_name: str, run: int, iteration: int):
+        curr_Na = np.sum(self.window_Na[publisher_name])
+        if curr_Na == 0:
+            adj_term = 0 
+        else:
+            adj_term = np.sqrt((2 * np.log(min(self.window_size, self.t))) / curr_Na)
+
+        self.conf_bound[publisher_name] = self.alpha * adj_term
         # Save the parameters
         if self.est_ucb is None:
             self.est_ucb = pd.DataFrame({
@@ -80,30 +89,25 @@ class SWCUCB:
                 }, index=[0])
             ])
 
-    def update(self, publisher_name: str):
-        curr_Na = np.sum(self.window_Na[publisher_name])
-        if curr_Na == 0:
-            adj_term = 0 
-        else:
-            adj_term = np.sqrt((2 * np.log(min(self.window_size, self.t))) / curr_Na)
-
-        self.conf_bound[publisher_name] = self.alpha * adj_term
-
     def knapsack_solver(
             self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
         curr_estimates = self.est_ucb.drop_duplicates(subset=['publisher'], keep='last')
         # Add the UCBs to the dataframe
+        curr_estimates.loc[:, 'ucb_clicks'] = curr_estimates['est_clicks'] + curr_estimates['conf_bound']
         curr_estimates.loc[:, 'lcb_clicks'] = curr_estimates['est_clicks'] - curr_estimates['conf_bound']
         curr_estimates.loc[:, 'ucb_impressions'] = curr_estimates['est_impressions'] + curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'lcb_impressions'] = curr_estimates['est_impressions'] - curr_estimates['conf_bound']
         # Get the data from the dataframe for the solver
-        n, clicks, impressions = get_data(curr_estimates)
+        n, ucb_clicks, lcb_clicks, ucb_impressions, lcb_impressions = get_data(curr_estimates)
         results = solver(
             df=curr_estimates,
             n=n,
-            clicks=clicks,
-            impressions=impressions,
+            ucb_clicks=ucb_clicks,
+            lcb_clicks=lcb_clicks,
+            ucb_impressions=ucb_impressions,
+            lcb_impressions=lcb_impressions,
             soglia_spent=soglia_spent,
             soglia_clicks=soglia_clicks,
             soglia_cpc=soglia_cpc,
@@ -121,13 +125,13 @@ class SWCUCB:
         ]
 
     def round_iteration(
-            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
+            self, run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
         self.t += 1
         # Update actual means
         for publisher in self.publisher_list:
-            self.update(publisher.name)
+            self.update(publisher.name, run, iteration)
         # Solve the knapsack problem
         selected_publishers = self.knapsack_solver(
             soglia_clicks=soglia_clicks,

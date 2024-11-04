@@ -20,15 +20,19 @@ def get_data(
 ):
     # Estraggo i dati dal dataframe
     n = df.shape[0]
-    clicks = df['lcb_clicks'].values
-    impressions = df['ucb_impressions'].values
-    return n, clicks, impressions
+    ucb_clicks = df['ucb_clicks'].values
+    lcb_clicks = df['lcb_clicks'].values
+    ucb_impressions = df['ucb_impressions'].values
+    lcb_impressions = df['lcb_impressions'].values
+    return n, ucb_clicks, lcb_clicks, ucb_impressions, lcb_impressions
 
 def solver(
         df: pd.DataFrame,
         n: int,
-        clicks: np.ndarray,
-        impressions: np.ndarray,
+        ucb_clicks: np.ndarray,
+        lcb_clicks: np.ndarray,
+        ucb_impressions: np.ndarray,
+        lcb_impressions: np.ndarray,
         spent: np.ndarray = None,
         cpc: np.ndarray = None,
         soglia_spent: float = None,
@@ -43,10 +47,10 @@ def solver(
     x = [solver.BoolVar(f'x{i}') for i in range(n)]
     x_np = np.array(x)
     # Funzione obiettivo
-    solver.Maximize(np.dot(clicks, x_np))
+    solver.Maximize(np.dot(ucb_clicks, x_np))
     if soglia_clicks is not None:
         # Vincolo Clicks
-        solver.Add(-np.dot(clicks, x_np) <= - soglia_clicks)
+        solver.Add(-np.dot(ucb_clicks, x_np) <= - soglia_clicks)
     if soglia_spent is not None:
         # Vincolo Spesa
         solver.Add(np.dot(spent, x_np) <= soglia_spent)
@@ -55,7 +59,7 @@ def solver(
         solver.Add(np.dot(cpc, x_np) <= soglia_cpc)
     if soglia_ctr is not None:
         # Vincolo CTR
-        solver.Add(np.dot(clicks, x_np) >= soglia_ctr * np.dot(impressions, x_np))
+        solver.Add(np.dot(lcb_clicks, x_np) >= soglia_ctr * np.dot(ucb_impressions, x_np))
     if soglia_num_publisher is not None:
         # Vincolo Numero Publisher
         solver.Add(sum(x_np) <= soglia_num_publisher)

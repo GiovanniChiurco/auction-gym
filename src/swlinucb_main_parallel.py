@@ -1,5 +1,6 @@
 import multiprocessing
 from CombinatorialLinUCB_nuo import CombinatorialLinUCBNuo
+from SW_CLinUCB import SWCLinUCB
 from new_main import *
 import time
 import pickle
@@ -72,11 +73,11 @@ def simulate_auctions_sequentially(
 
 def simulation_run(
         run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter,
-        rounds_per_iter, soglia_ctr, embedding_size, alpha
+        rounds_per_iter, soglia_ctr, embedding_size, alpha, window_size
 ):
     start_time_run = time.time()
     agent_stats = pd.DataFrame()
-    comb_linucb = CombinatorialLinUCBNuo(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list)
+    comb_linucb = SWCLinUCB(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list, window_size=window_size)
     for i in range(num_iter):
         print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}')
 
@@ -146,14 +147,12 @@ def simulation_run(
         how='left'
     )
 
-    # linucb_theta_click, linucb_theta_impressions = comb_linucb.save_params()
-
     print(f'Run {run} took {time.time() - start_time_run} seconds')
 
-    return agent_stats, merged_df# , linucb_theta_click, linucb_theta_impressions
+    return agent_stats, merged_df
 
 
-def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha):
+def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha, window_size):
     print(f'[RUN {run}] Running simulation with soglia_ctr = {soglia_ctr} and alpha = {alpha}')
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
@@ -162,16 +161,10 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
                                               init_publisher_embeddings, adv_embeddings)
     print(f'Generating deal took {time.time() - start_gen_deal} seconds')
 
-    # agent_stats, merged_df, linucb_theta_click, linucb_theta_impressions = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
-    agent_stats, merged_df = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
+    agent_stats, merged_df = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha, window_size)
 
     merged_df.to_csv(
-        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
-    
-    # with open(os.path.join(output_dir, f'model_params/linucb_theta_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
-    #     pickle.dump(linucb_theta_click, f)
-    # with open(os.path.join(output_dir, f'model_params/linucb_theta_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
-    #     pickle.dump(linucb_theta_impressions, f)
+        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
 
 
 if __name__ == "__main__":
@@ -189,21 +182,18 @@ if __name__ == "__main__":
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    # if not os.path.exists(os.path.join(output_dir, 'detailed_results')):
-    #     os.makedirs(os.path.join(output_dir, 'detailed_results'))
-    # if not os.path.exists(os.path.join(output_dir, 'model_params')):
-    #     os.makedirs(os.path.join(output_dir, 'model_params'))
 
-    # rng.shuffle(publishers)
-    init_publisher_list = publishers[:20]
+    rng.shuffle(publishers)
+    init_publisher_list = publishers[:300]
 
+    window_size_list = [50]
+    alpha_list = [1]
     soglia_ctr = 0.97
-    alpha_list = [0]
-    
     tasks = []
-    for alpha in alpha_list:
-        for run in range(num_runs):
-            tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha))
+    for window_size in window_size_list:
+        for alpha in alpha_list:
+            for run in range(num_runs):
+                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, window_size))
 
     start_time = time.time()
     with multiprocessing.Pool(processes=16) as pool:
@@ -211,5 +201,5 @@ if __name__ == "__main__":
     print(f'Total time: {time.time() - start_time}')
 
     # Save grouped results
-    # grouped_results = read_results(output_dir)
-    # grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
+    grouped_results = read_results(output_dir)
+    grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
