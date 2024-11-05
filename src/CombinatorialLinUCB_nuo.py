@@ -154,6 +154,9 @@ class CombinatorialLinUCBNuo:
             soglia_num_publisher=soglia_num_publisher,
             soglia_ctr=soglia_ctr
         )
+        if not super_arm:
+            # No solution found -> return the previous super-arm
+            return curr_publisher_list
         # Return the super-arm
         return super_arm
 
@@ -208,7 +211,8 @@ class CombinatorialLinUCBNuo:
             soglia_ctr=soglia_ctr
         )
         if results.empty:
-            results = curr_estimates
+            # No solution found
+            return []
         
         publisher_names = results['publisher'].unique()
         return [

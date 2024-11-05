@@ -87,6 +87,7 @@ def simulation_run(
         print(f'Iteration {i}, run {run}, alpha {alpha}, soglia_ctr {soglia_ctr}')
         if i > 1:
             publisher_list = cucb.round_iteration(
+                curr_publisher_list=publisher_list,
                 soglia_ctr=soglia_ctr,
                 run=run,
                 iteration=i
@@ -140,7 +141,7 @@ def simulation_run(
     return agent_stats, merged_df
 
 
-def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha):
+def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings):
     print(f'[RUN {run}] Running simulation with soglia_ctr = {soglia_ctr} e alpha = {alpha}')
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
@@ -178,10 +179,10 @@ if __name__ == "__main__":
     tasks = []
     for alpha in alpha_list:
         for run in range(num_runs):
-            tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha))
+            tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=16) as pool:
+    with multiprocessing.Pool(processes=2) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 

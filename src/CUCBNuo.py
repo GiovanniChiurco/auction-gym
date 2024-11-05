@@ -101,7 +101,8 @@ class CUCBNuo:
             soglia_ctr=soglia_ctr
         )
         if results.empty:
-            results = curr_estimates
+            # No solution found
+            return []
         publisher_names = results['publisher'].unique()
 
         return [
@@ -111,7 +112,7 @@ class CUCBNuo:
         ]
 
     def round_iteration(
-            self, run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
+            self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
         self.t += 1
@@ -128,6 +129,9 @@ class CUCBNuo:
             soglia_num_publisher=soglia_num_publisher,
             soglia_ctr=soglia_ctr
         )
+        if not selected_publishers:
+            # No solution found -> return the previous super-arm
+            return curr_publisher_list
         return selected_publishers
 
     def set_time_t(self, t: int):
