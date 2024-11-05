@@ -69,17 +69,16 @@ def simulate_auctions_random(
 
 
 def simulate_auctions_sequentially(
-        publisher_list: List[Publisher], user_contexts: dict, sigmoids: dict, auction: Auction, i: int, rounds_per_iter: int
+        publisher_list: List[Publisher], sigmoids: dict, auction: Auction, i: int, rounds_per_iter: int
 ):
     # Simulate auctions sequentially
     for publisher in publisher_list:
         for j in range(rounds_per_iter):
-            current_user_context = user_contexts[publisher.name][i][j]
-            auction.simulate_opportunity(publisher.name, current_user_context, sigmoids[publisher.name], i, j)
+            auction.simulate_opportunity(publisher.name, sigmoids[publisher.name], i, j)
 
 
 def simulation_run(
-        run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha
+        run, init_publisher_list, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha
 ):
     agent_stats = pd.DataFrame()
     cucb = CUCBNuo(publisher_list=init_publisher_list, alpha=alpha)
@@ -98,7 +97,6 @@ def simulation_run(
         # Simulate auctions sequentially (faster)
         simulate_auctions_sequentially(
             publisher_list=publisher_list,
-            user_contexts=user_contexts,
             sigmoids=sigmoids,
             auction=auction,
             i=i,
@@ -150,7 +148,7 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
                                               init_publisher_embeddings, adv_embeddings)
     print(f'Generating deal took {time.time() - start_gen_deal} seconds')
 
-    budget_results = simulation_run(run, init_publisher_list, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha)
+    budget_results = simulation_run(run, init_publisher_list, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha)
     agent_stats, lin_ucb_params = budget_results
 
     lin_ucb_params.to_csv(
@@ -171,8 +169,9 @@ if __name__ == "__main__":
     publishers = instantiate_publishers(publisher_embeddings, rounds_per_iter)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    # rng.shuffle(publishers)
-    init_publisher_list = publishers[:20]
+
+    rng.shuffle(publishers)
+    init_publisher_list = publishers[:300]
 
     alpha_list = [1]
     soglia_ctr = 0.97
@@ -187,5 +186,5 @@ if __name__ == "__main__":
     print(f'Total time: {time.time() - start_time}')
 
     # Save grouped results
-    grouped_results = read_results(output_dir)
-    grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
+    # grouped_results = read_results(output_dir)
+    # grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)

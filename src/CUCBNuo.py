@@ -103,6 +103,8 @@ class CUCBNuo:
         if results.empty:
             # No solution found
             return []
+            # results = curr_estimates
+
         publisher_names = results['publisher'].unique()
 
         return [

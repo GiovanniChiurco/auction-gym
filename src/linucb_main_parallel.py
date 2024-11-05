@@ -249,10 +249,12 @@ if __name__ == "__main__":
     # if not os.path.exists(os.path.join(output_dir, 'model_params')):
     #     os.makedirs(os.path.join(output_dir, 'model_params'))
 
-    # rng.shuffle(publishers)
+    rng.shuffle(publishers)
+    rng.shuffle(obfuscated_publishers)
     num_pub = 300
     init_publisher_list = publishers[:num_pub]
-    init_publisher_obfuscated_list = obfuscated_publishers[:num_pub]
+    init_publisher_list_names = [pub.name for pub in init_publisher_list]
+    init_publisher_obfuscated_list = [pub_obf for pub_obf in obfuscated_publishers if pub_obf.name in init_publisher_list_names]
 
     soglia_ctr = 0.97
     alpha_list = [1]
