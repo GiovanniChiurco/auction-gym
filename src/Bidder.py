@@ -18,7 +18,7 @@ class Bidder:
         self.rng = rng
         self.truthful = False # Default
 
-    def update(self, contexts, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
+    def update(self, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
         pass
 
     def clear_logs(self, memory):
@@ -31,7 +31,7 @@ class TruthfulBidder(Bidder):
         super(TruthfulBidder, self).__init__(rng)
         self.truthful = True
 
-    def bid(self, value, context, estimated_CTR):
+    def bid(self, value, estimated_CTR):
         return value * estimated_CTR
 
 
@@ -44,7 +44,7 @@ class EmpiricalShadedBidder(Bidder):
         self.gammas = []
         super(EmpiricalShadedBidder, self).__init__(rng)
 
-    def bid(self, value, context, estimated_CTR):
+    def bid(self, value, estimated_CTR):
         # Compute the bid as expected value
         bid = value * estimated_CTR
         # Sample the shade factor gamma
@@ -57,7 +57,7 @@ class EmpiricalShadedBidder(Bidder):
         self.gammas.append(gamma)
         return bid
 
-    def update(self, contexts, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
+    def update(self, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
         # Compute net utility
         utilities = np.zeros_like(values)
         utilities[won_mask] = (values[won_mask] * outcomes[won_mask]) - prices[won_mask]
@@ -168,7 +168,7 @@ class ValueLearningBidder(Bidder):
         self.model_initialised = False
         super(ValueLearningBidder, self).__init__(rng)
 
-    def bid(self, value, context, estimated_CTR):
+    def bid(self, value, estimated_CTR):
         # Compute the bid as expected value
         bid = value * estimated_CTR
         if not self.model_initialised:
@@ -207,7 +207,7 @@ class ValueLearningBidder(Bidder):
         self.propensities.append(propensity)
         return bid
 
-    def update(self, contexts, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
+    def update(self, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
         # FALLBACK: if you lost every auction you participated in, your model collapsed
         # Revert to not shading for 1 round, to collect data with informational value
         if not won_mask.astype(np.uint8).sum():
@@ -345,7 +345,7 @@ class PolicyLearningBidder(Bidder):
         self.model_initialised = False
         super(PolicyLearningBidder, self).__init__(rng)
 
-    def bid(self, value, context, estimated_CTR):
+    def bid(self, value, estimated_CTR):
         # Compute the bid as expected value
         bid = value * estimated_CTR
         if not self.model_initialised:
@@ -366,7 +366,7 @@ class PolicyLearningBidder(Bidder):
         self.propensities.append(propensity)
         return bid
 
-    def update(self, contexts, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
+    def update(self, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
         # Compute net utility
         utilities = np.zeros_like(values)
         utilities[won_mask] = (values[won_mask] * outcomes[won_mask]) - prices[won_mask]
@@ -452,7 +452,7 @@ class DoublyRobustBidder(Bidder):
         self.model_initialised = False
         super(DoublyRobustBidder, self).__init__(rng)
 
-    def bid(self, value, context, estimated_CTR):
+    def bid(self, value, estimated_CTR):
         # Compute the bid as expected value
         bid = value * estimated_CTR
         if not self.model_initialised:
@@ -474,7 +474,7 @@ class DoublyRobustBidder(Bidder):
         self.propensities.append(propensity)
         return bid
 
-    def update(self, contexts, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
+    def update(self, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, name):
         # Compute net utility
         utilities = np.zeros_like(values)
         utilities[won_mask] = (values[won_mask] * outcomes[won_mask]) - prices[won_mask]

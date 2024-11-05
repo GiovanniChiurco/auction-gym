@@ -3,10 +3,11 @@ from dataclasses import dataclass
 
 @dataclass
 class ImpressionOpportunity:
-    __slots__ = ['context', 'item', 'value', 'bid', 'best_expected_value', 'true_CTR', 'estimated_CTR', 'price',
+    __slots__ = [#'context',
+                 'item', 'value', 'bid', 'best_expected_value', 'true_CTR', 'estimated_CTR', 'price',
                  'second_price', 'winning_bid', 'outcome', 'won', 'publisher']
 
-    context: np.array
+    # context: np.array
     item: np.uint32
     value: np.float32
     bid: np.float32

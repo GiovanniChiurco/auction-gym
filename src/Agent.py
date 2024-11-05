@@ -28,7 +28,7 @@ class Agent:
 
         self.memory = memory
 
-    def select_item(self, context, precomputed_cos_sim=None):
+    def select_item(self, precomputed_cos_sim=None):
         # Estimate CTR for all items
         # estim_CTRs = self.allocator.estimate_CTR(context)
         estim_CTRs = precomputed_cos_sim
@@ -38,25 +38,25 @@ class Agent:
         best_item = np.argmax(estim_values)
 
         # If we do Thompson Sampling, don't propagate the noisy bid amount but bid using the MAP estimate
-        if type(self.allocator) == PyTorchLogisticRegressionAllocator and self.allocator.thompson_sampling:
-            estim_CTRs_MAP = self.allocator.estimate_CTR(context, sample=False)
-            return best_item, estim_CTRs_MAP[best_item]
+        # if type(self.allocator) == PyTorchLogisticRegressionAllocator and self.allocator.thompson_sampling:
+        #     estim_CTRs_MAP = self.allocator.estimate_CTR(context, sample=False)
+        #     return best_item, estim_CTRs_MAP[best_item]
 
         # return best_item, estim_CTRs[best_item]
         return best_item, estim_CTRs
 
-    def bid(self, context: np.ndarray, publisher_name: str, precomputed_cos_sim: float):
+    def bid(self, publisher_name: str, precomputed_cos_sim: float):
         # First, pick what item we want to choose
-        best_item, estimated_CTR = self.select_item(context, precomputed_cos_sim)
+        best_item, estimated_CTR = self.select_item(precomputed_cos_sim)
 
         # Sample value for this item
         value = self.item_values[best_item]
 
         # Get the bid
-        bid = self.bidder.bid(value, context, estimated_CTR)
+        bid = self.bidder.bid(value, estimated_CTR)
 
         # Log what we know so far
-        self.logs.append(ImpressionOpportunity(context=context,
+        self.logs.append(ImpressionOpportunity(# context=context,
                                                item=best_item,
                                                estimated_CTR=estimated_CTR,
                                                value=value,
@@ -83,8 +83,8 @@ class Agent:
 
     def update(self, iteration, plot=False, figsize=(8,5), fontsize=14):
         # Gather relevant logs
-        contexts = np.array(list(opp.context for opp in self.logs))
-        items = np.array(list(opp.item for opp in self.logs))
+        # contexts = np.array(list(opp.context for opp in self.logs))
+        # items = np.array(list(opp.item for opp in self.logs))
         values = np.array(list(opp.value for opp in self.logs))
         bids = np.array(list(opp.bid for opp in self.logs))
         prices = np.array(list(opp.price for opp in self.logs))
@@ -93,10 +93,10 @@ class Agent:
 
         # Update response model with data from winning bids
         won_mask = np.array(list(opp.won for opp in self.logs))
-        self.allocator.update(contexts[won_mask], items[won_mask], outcomes[won_mask], iteration, plot, figsize, fontsize, self.name)
+        # self.allocator.update(contexts[won_mask], items[won_mask], outcomes[won_mask], iteration, plot, figsize, fontsize, self.name)
 
         # Update bidding model with all data
-        self.bidder.update(contexts, values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, self.name)
+        self.bidder.update(values, bids, prices, outcomes, estimated_CTRs, won_mask, iteration, plot, figsize, fontsize, self.name)
 
     def get_allocation_regret(self):
         ''' How much value am I missing out on due to suboptimal allocation? '''
