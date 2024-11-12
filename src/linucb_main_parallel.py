@@ -194,11 +194,11 @@ if __name__ == "__main__":
     # if not os.path.exists(os.path.join(output_dir, 'model_params')):
     #     os.makedirs(os.path.join(output_dir, 'model_params'))
 
-    # rng.shuffle(publishers)
-    init_publisher_list = publishers[:20]
+    rng.shuffle(publishers)
+    init_publisher_list = publishers[:300]
 
     soglia_ctr = 0.97
-    alpha_list = [0]
+    alpha_list = [1]
     
     tasks = []
     for alpha in alpha_list:
@@ -206,7 +206,7 @@ if __name__ == "__main__":
             tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=16) as pool:
+    with multiprocessing.Pool(processes=2) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 

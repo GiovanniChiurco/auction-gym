@@ -171,10 +171,11 @@ if __name__ == "__main__":
     publishers = instantiate_publishers(publisher_embeddings, rounds_per_iter)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    # rng.shuffle(publishers)
-    init_publisher_list = publishers[:20]
+    
+    rng.shuffle(publishers)
+    init_publisher_list = publishers[:300]
 
-    alpha_list = [1]
+    alpha_list = [1.2, 1.6, 2.0]
     soglia_ctr = 0.97
     tasks = []
     for alpha in alpha_list:
@@ -187,5 +188,5 @@ if __name__ == "__main__":
     print(f'Total time: {time.time() - start_time}')
 
     # Save grouped results
-    grouped_results = read_results(output_dir)
-    grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
+    # grouped_results = read_results(output_dir)
+    # grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)

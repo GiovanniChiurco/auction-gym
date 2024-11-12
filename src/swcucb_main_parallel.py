@@ -174,8 +174,8 @@ if __name__ == "__main__":
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
 
-    window_size_list = [70]
-    alpha_list = [0]
+    window_size_list = [50, 70, 100]
+    alpha_list = [1]
     soglia_ctr = 0.97
     tasks = []
     for window_size in window_size_list:
@@ -184,10 +184,10 @@ if __name__ == "__main__":
                 tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, window_size))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=16) as pool:
+    with multiprocessing.Pool(processes=2) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 
     # Save grouped results
-    grouped_results = read_results(output_dir)
-    grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
+    # grouped_results = read_results(output_dir)
+    # grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
