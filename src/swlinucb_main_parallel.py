@@ -1,6 +1,7 @@
 import multiprocessing
 from CombinatorialLinUCB_nuo import CombinatorialLinUCBNuo
 from SW_CLinUCB import SWCLinUCB
+from SW_CLinUCB_arce_v import SWCLinUCB_arce_v
 from new_main import *
 import time
 import pickle
@@ -62,13 +63,12 @@ def simulate_auctions_random(
 
 
 def simulate_auctions_sequentially(
-        publisher_list: List[Publisher], user_contexts: dict, sigmoids: dict, auction: Auction, i: int, rounds_per_iter: int
+        publisher_list: List[Publisher], sigmoids: dict, auction: Auction, i: int, rounds_per_iter: int
 ):
     # Simulate auctions sequentially
     for publisher in publisher_list:
         for j in range(rounds_per_iter):
-            current_user_context = user_contexts[publisher.name][i][j]
-            auction.simulate_opportunity(publisher.name, current_user_context, sigmoids[publisher.name], i, j)
+            auction.simulate_opportunity(publisher.name, sigmoids[publisher.name], i, j)
 
 
 def simulation_run(
@@ -77,7 +77,8 @@ def simulation_run(
 ):
     start_time_run = time.time()
     agent_stats = pd.DataFrame()
-    comb_linucb = SWCLinUCB(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list, window_size=window_size)
+    # comb_linucb = SWCLinUCB(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list, window_size=window_size)
+    comb_linucb = SWCLinUCB_arce_v(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list, window_size=window_size)
     for i in range(num_iter):
         print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}')
 
@@ -97,7 +98,6 @@ def simulation_run(
         start_time = time.time()
         simulate_auctions_sequentially(
             publisher_list=publisher_list,
-            user_contexts=user_contexts,
             sigmoids=sigmoids,
             auction=auction,
             i=i,
@@ -113,14 +113,15 @@ def simulation_run(
             if agent.name.startswith('Nostro'):
                 start_time = time.time()
                 agent_stats_pub = agent.iteration_stats_per_publisher()
-                for publisher_data in agent_stats_pub:
-                    comb_linucb.update(
-                        publisher_name=publisher_data['publisher'],
-                        publisher_embedding=init_publisher_embeddings[publisher_data['publisher']],
-                        clicks=publisher_data['clicks'],
-                        impressions=publisher_data['impressions'],
-                        iteration=i
-                    )
+                comb_linucb.update(agent_stats_pub, init_publisher_embeddings)
+                # for publisher_data in agent_stats_pub:
+                #     comb_linucb.update(
+                #         publisher_name=publisher_data['publisher'],
+                #         publisher_embedding=init_publisher_embeddings[publisher_data['publisher']],
+                #         clicks=publisher_data['clicks'],
+                #         impressions=publisher_data['impressions'],
+                #         iteration=i
+                #     )
                 print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Combinatorial LinUCB update took {time.time() - start_time} seconds')
 
                 start_time = time.time()
@@ -186,20 +187,21 @@ if __name__ == "__main__":
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
 
-    window_size_list = [50]
+    window_size_list = [70]
     alpha_list = [1]
     soglia_ctr = 0.97
+    
     tasks = []
     for window_size in window_size_list:
         for alpha in alpha_list:
             for run in range(num_runs):
-                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, window_size))
-
+                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha, window_size))
+    
     start_time = time.time()
-    with multiprocessing.Pool(processes=16) as pool:
+    with multiprocessing.Pool(processes=1) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 
     # Save grouped results
-    grouped_results = read_results(output_dir)
-    grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
+    # grouped_results = read_results(output_dir)
+    # grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)
