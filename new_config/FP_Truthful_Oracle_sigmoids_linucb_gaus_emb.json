@@ -1,12 +1,12 @@
 {
   "random_seed": 0,
   "num_runs": 10,
-  "num_iter" : 150,
+  "num_iter" : 600,
   "rounds_per_iter": 200,
   "num_participants_per_round": 4,
-  "embedding_size": 6,
+  "embedding_size": 11,
   "embedding_var": 1.0,
-  "obs_embedding_size": 6,
+  "obs_embedding_size": 11,
   "allocation": "FirstPrice",
   "knapsack_params": {
     "soglia_ctr": 0.004

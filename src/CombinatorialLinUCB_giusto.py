@@ -42,22 +42,15 @@ class CombinatorialLinUCBRight:
         self.n_arms += 1
         self.publisher_list.append(publisher.name)
 
-    def update_arm(self, publisher: Publisher, run: int, iteration: int):
+    def update_arm(self, L, lower, publisher: Publisher, run: int, iteration: int):
         # Matrix inversion with Cholesky decomposition
-        # if np.all(np.linalg.eigvals(self.A[publisher.name]) > 0):  # Definita positiva
-        # Applica la fattorizzazione di Cholesky
-        # Calcola la fattorizzazione di Cholesky di A (la parte triangolare inferiore di A)
-        L, lower = scipy.linalg.cho_factor(self.A, lower=True)
         embedding = publisher.embedding  # Salvare embedding per evitare lookup ripetuti
         # Aggiorna il confine di confidenza usando la fattorizzazione di Cholesky
         # Risolvi Lx = embedding (forward substitution) e quindi L^Ty = x (back substitution)
         x = scipy.linalg.cho_solve((L, lower), embedding)
         self.conf_bound[publisher.name] = self.alpha * np.sqrt(embedding.dot(x))
-        # Aggiorna i parametri click e stima usando la fattorizzazione di Cholesky
-        self.theta_click = scipy.linalg.cho_solve((L, lower), self.b_click)
+        # Aggiorna le stime di click e impression
         self.est_click[publisher.name] = np.dot(self.theta_click, embedding)
-        # Aggiorna i parametri impression e stima
-        self.theta_impr = scipy.linalg.cho_solve((L, lower), self.b_impr)
         self.est_impr[publisher.name] = np.dot(self.theta_impr, embedding)
         # Save the parameters
         if self.linucb_params is None:
@@ -91,20 +84,15 @@ class CombinatorialLinUCBRight:
         estimates['Run'] = run
         estimates['Iteration'] = iteration
         return estimates
+    
+    def compute_theta(self):
+        L, lower = scipy.linalg.cho_factor(self.A, lower=True)
 
-    def add_miss_rows(self, publisher_list: List[Publisher], run: int, iteration: int):
-        for publisher in publisher_list:
-            self.linucb_params = pd.concat([
-                self.linucb_params,
-                pd.DataFrame({
-                    'Iteration': iteration,
-                    'Run': run,
-                    'publisher': publisher.name,
-                    'est_clicks': self.est_click[publisher.name],
-                    'est_impressions': self.est_impr[publisher.name],
-                    'conf_bound': self.conf_bound[publisher.name]
-                }, index=[0])
-            ], ignore_index=True)
+        self.theta_click = scipy.linalg.cho_solve((L, lower), self.b_click)
+        self.theta_impr = scipy.linalg.cho_solve((L, lower), self.b_impr)
+
+        return L, lower
+
 
     def round_iteration(
             self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None,
@@ -113,11 +101,10 @@ class CombinatorialLinUCBRight:
         for publisher in curr_publisher_list:
             # if not self.check_publisher_exist(publisher):
             #     self.add_new_arm(publisher)
+            # Update A and thetas
+            L, lower = self.compute_theta()
             # Update arms parameters
-            self.update_arm(publisher=publisher, run=run, iteration=iteration)
-        # Ripeto i dati già presenti per statistiche successive
-        # not_updated_publishers = [publisher for publisher in self.publisher_list if publisher not in curr_publisher_list]
-        # self.add_miss_rows(not_updated_publishers, run, iteration)
+            self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
         # Select the super-arm
         # il parametro publisher_list non viene passato al solver perché i dati necessari sono già presenti nel dataframe iteration_stats
         super_arm = self.knapsack_solver(
@@ -137,8 +124,8 @@ class CombinatorialLinUCBRight:
 
     def update(self, agent_stats_pub: List[dict], init_publisher_embeddings: dict):
         dot_prod_emb = 0
-        dot_prod_click = 0
-        dot_prod_impr = 0
+        dot_prod_click = np.zeros(self.d)
+        dot_prod_impr = np.zeros(self.d)
         for publisher_data in agent_stats_pub:
             publisher_embedding = init_publisher_embeddings[publisher_data['publisher']]
             dot_prod_emb += np.outer(publisher_embedding, publisher_embedding)
@@ -148,6 +135,25 @@ class CombinatorialLinUCBRight:
         self.b_click += dot_prod_click
         self.b_impr += dot_prod_impr
 
+    # def update(self, agent_stats_pub: List[dict], init_publisher_embeddings: dict):
+    #     dot_prod_emb = 0
+    #     dot_prod_click = 0
+    #     dot_prod_impr = 0
+
+    #     curr_publisher_embeddings = np.array([init_publisher_embeddings[publisher_data['publisher']] for publisher_data in agent_stats_pub])
+    #     curr_clicks = np.array([publisher_data['clicks'] for publisher_data in agent_stats_pub])
+    #     curr_impressions = np.array([publisher_data['impressions'] for publisher_data in agent_stats_pub])
+
+    #     dot_prod_emb = np.dot(curr_publisher_embeddings.T, curr_publisher_embeddings)
+
+    #     dot_prod_click = np.dot(curr_publisher_embeddings.T, curr_clicks)
+    #     dot_prod_impr = np.dot(curr_publisher_embeddings.T, curr_impressions)
+
+    #     self.A += dot_prod_emb
+    #     self.b_click += dot_prod_click
+    #     self.b_impr += dot_prod_impr
+
+
     def initial_round(
             self, run: int, iteration: int,
     ):
@@ -155,8 +161,9 @@ class CombinatorialLinUCBRight:
         for publisher in self.publisher_list:
             # if not self.check_publisher_exist(publisher):
             #     self.add_new_arm(publisher)
+            L, lower = self.compute_theta()
             # Update arms parameters
-            self.update_arm(publisher=publisher, run=run, iteration=iteration)
+            self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
 
     def check_publisher_exist(self, publisher: Publisher):
         for pub in self.publisher_list:
