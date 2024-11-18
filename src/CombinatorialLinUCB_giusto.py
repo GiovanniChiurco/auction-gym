@@ -50,8 +50,8 @@ class CombinatorialLinUCBRight:
         x = scipy.linalg.cho_solve((L, lower), embedding)
         self.conf_bound[publisher.name] = self.alpha * np.sqrt(embedding.dot(x))
         # Aggiorna le stime di click e impression
-        self.est_click[publisher.name] = np.dot(self.theta_click, embedding)
-        self.est_impr[publisher.name] = np.dot(self.theta_impr, embedding)
+        self.est_click[publisher.name] = max(0, np.dot(self.theta_click, embedding))
+        self.est_impr[publisher.name] = max(0, np.dot(self.theta_impr, embedding))
         # Save the parameters
         if self.linucb_params is None:
             self.linucb_params = pd.DataFrame({
@@ -93,18 +93,34 @@ class CombinatorialLinUCBRight:
 
         return L, lower
 
+    def add_miss_rows(self, publisher_list: List[Publisher], run: int, iteration: int):
+        for publisher in publisher_list:
+            self.linucb_params = pd.concat([
+                self.linucb_params,
+                pd.DataFrame({
+                    'Iteration': iteration,
+                    'Run': run,
+                    'publisher': publisher.name,
+                    'est_clicks': self.est_click[publisher.name],
+                    'est_impressions': self.est_impr[publisher.name],
+                    'conf_bound': self.conf_bound[publisher.name]
+                }, index=[0])
+            ], ignore_index=True)
 
     def round_iteration(
             self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None,
             soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None, soglia_ctr: float = None) -> List[Publisher]:
-        # Check if there are new arms (= new publishers in the list)
+        # Update A and thetas
+        L, lower = self.compute_theta()
         for publisher in curr_publisher_list:
+            # Non ha senso controllare se l'arm è già presente, perché nelle prime 2 iterazioni provo tutti gli arms
             # if not self.check_publisher_exist(publisher):
             #     self.add_new_arm(publisher)
-            # Update A and thetas
-            L, lower = self.compute_theta()
             # Update arms parameters
             self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
+        # Ripeto i dati già presenti per statistiche successive
+        not_updated_publishers = [publisher for publisher in self.publisher_list if publisher not in curr_publisher_list]
+        self.add_miss_rows(not_updated_publishers, run, iteration)
         # Select the super-arm
         # il parametro publisher_list non viene passato al solver perché i dati necessari sono già presenti nel dataframe iteration_stats
         super_arm = self.knapsack_solver(
@@ -122,46 +138,42 @@ class CombinatorialLinUCBRight:
         # Return the super-arm
         return super_arm
 
-    def update(self, agent_stats_pub: List[dict], init_publisher_embeddings: dict):
-        dot_prod_emb = 0
-        dot_prod_click = np.zeros(self.d)
-        dot_prod_impr = np.zeros(self.d)
-        for publisher_data in agent_stats_pub:
-            publisher_embedding = init_publisher_embeddings[publisher_data['publisher']]
-            dot_prod_emb += np.outer(publisher_embedding, publisher_embedding)
-            dot_prod_click += publisher_data['clicks'] * publisher_embedding
-            dot_prod_impr += publisher_data['impressions'] * publisher_embedding
-        self.A += dot_prod_emb
-        self.b_click += dot_prod_click
-        self.b_impr += dot_prod_impr
-
     # def update(self, agent_stats_pub: List[dict], init_publisher_embeddings: dict):
     #     dot_prod_emb = 0
-    #     dot_prod_click = 0
-    #     dot_prod_impr = 0
-
-    #     curr_publisher_embeddings = np.array([init_publisher_embeddings[publisher_data['publisher']] for publisher_data in agent_stats_pub])
-    #     curr_clicks = np.array([publisher_data['clicks'] for publisher_data in agent_stats_pub])
-    #     curr_impressions = np.array([publisher_data['impressions'] for publisher_data in agent_stats_pub])
-
-    #     dot_prod_emb = np.dot(curr_publisher_embeddings.T, curr_publisher_embeddings)
-
-    #     dot_prod_click = np.dot(curr_publisher_embeddings.T, curr_clicks)
-    #     dot_prod_impr = np.dot(curr_publisher_embeddings.T, curr_impressions)
-
+    #     dot_prod_click = np.zeros(self.d)
+    #     dot_prod_impr = np.zeros(self.d)
+    #     for publisher_data in agent_stats_pub:
+    #         publisher_embedding = init_publisher_embeddings[publisher_data['publisher']]
+    #         dot_prod_emb += np.outer(publisher_embedding, publisher_embedding)
+    #         dot_prod_click += publisher_data['clicks'] * publisher_embedding
+    #         dot_prod_impr += publisher_data['impressions'] * publisher_embedding
     #     self.A += dot_prod_emb
     #     self.b_click += dot_prod_click
     #     self.b_impr += dot_prod_impr
+
+    def update(self, agent_stats_pub: List[dict], init_publisher_embeddings: dict):
+        curr_publisher_embeddings = np.array([init_publisher_embeddings[publisher_data['publisher']] for publisher_data in agent_stats_pub])
+        curr_clicks = np.array([publisher_data['clicks'] for publisher_data in agent_stats_pub])
+        curr_impressions = np.array([publisher_data['impressions'] for publisher_data in agent_stats_pub])
+
+        dot_prod_emb = np.dot(curr_publisher_embeddings.T, curr_publisher_embeddings)
+
+        dot_prod_click = np.dot(curr_publisher_embeddings.T, curr_clicks)
+        dot_prod_impr = np.dot(curr_publisher_embeddings.T, curr_impressions)
+
+        self.A += dot_prod_emb
+        self.b_click += dot_prod_click
+        self.b_impr += dot_prod_impr
 
 
     def initial_round(
             self, run: int, iteration: int,
     ):
+        L, lower = self.compute_theta()
         # Check if there are new arms (= new publishers in the list)
         for publisher in self.publisher_list:
             # if not self.check_publisher_exist(publisher):
             #     self.add_new_arm(publisher)
-            L, lower = self.compute_theta()
             # Update arms parameters
             self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
 

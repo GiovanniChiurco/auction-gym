@@ -262,7 +262,7 @@ if __name__ == "__main__":
     # init_publisher_list_names = [pub.name for pub in init_publisher_list]
     # init_publisher_obfuscated_list = [pub_obf for pub_obf in obfuscated_publishers if pub_obf.name in init_publisher_list_names]
 
-    soglia_ctr = 0.97
+    soglia_ctr = 0.85
     alpha_list = [1]
     
     tasks = []
@@ -271,7 +271,7 @@ if __name__ == "__main__":
             tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, obs_embedding_size, adv_embeddings, alpha))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=8) as pool:
+    with multiprocessing.Pool(processes=1) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 

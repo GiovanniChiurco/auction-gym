@@ -174,14 +174,14 @@ if __name__ == "__main__":
     init_publisher_list = publishers[:300]
 
     alpha_list = [1]
-    soglia_ctr = 0.97
+    soglia_ctr = 0.85
     tasks = []
     for alpha in alpha_list:
         for run in range(num_runs):
             tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=5) as pool:
+    with multiprocessing.Pool(processes=1) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 
