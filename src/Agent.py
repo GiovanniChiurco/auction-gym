@@ -129,6 +129,8 @@ class Agent:
             publisher_logs = [opp for opp in self.logs if opp.publisher == publisher]
 
             publisher_won_logs = [opp for opp in publisher_logs if opp.won]
+            # if not publisher_won_logs:
+            #     continue
             publisher_lost_logs = [opp for opp in publisher_logs if not opp.won]
 
             publisher_won_auctions = len(publisher_won_logs)

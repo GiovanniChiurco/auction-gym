@@ -1,12 +1,12 @@
 {
   "random_seed": 0,
-  "num_runs": 5,
-  "num_iter" : 700,
+  "num_runs": 20,
+  "num_iter" : 500,
   "rounds_per_iter": 200,
   "num_participants_per_round": 4,
-  "embedding_size": 11,
+  "embedding_size": 70,
   "embedding_var": 1.0,
-  "obs_embedding_size": 11,
+  "obs_embedding_size": 70,
   "allocation": "FirstPrice",
   "knapsack_params": {
     "soglia_ctr": 0.004
@@ -111,7 +111,7 @@
       }
     }
   ],
-  "output_dir": "results/FP_Truthful_Oracle_sigmoids_cucb_gaus_emb_0_85/",
-  "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/adv_gaus_emb.pkl",
-  "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/pub_gaus_emb.pkl"
+  "output_dir": "results/FP_Truthful_Oracle_sigmoids_linucb_textemb_ctr_0_99_10_12_24_nuovipub/",
+  "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/ad_embeddings_red_70.pkl",
+  "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/sites_embeddings_red_70.pkl"
 }

@@ -1,12 +1,76 @@
 import multiprocessing
-from CombinatorialLinUCB_nuo import CombinatorialLinUCBNuo
-from SW_CLinUCB import SWCLinUCB
-from SW_CLinUCB_arce_v import SWCLinUCB_arce_v
+from CombinatorialLinUCBLog import CombinatorialLinUCBLog
 from new_main import *
 import time
 import pickle
 import re
 
+
+# def parse_config(path):
+#     with open(path) as f:
+#         config = json.load(f)
+#
+#     # Set up Random Number Generator
+#     rng = np.random.default_rng(config['random_seed'])
+#     np.random.seed(config['random_seed'])
+#
+#     # Number of runs
+#     num_runs = config['num_runs'] if 'num_runs' in config.keys() else 1
+#
+#     # Max. number of slots in every auction round
+#     # Multi-slot is currently not fully supported.
+#     max_slots = 1
+#
+#     # Technical parameters for distribution of latent embeddings
+#     embedding_size = config['embedding_size']
+#     embedding_var = config['embedding_var']
+#     obs_embedding_size = config['obs_embedding_size']
+#
+#     # Expand agent-config if there are multiple copies
+#     agent_configs = []
+#     num_agents = 0
+#     for agent_config in config['agents']:
+#         if 'num_copies' in agent_config.keys():
+#             for i in range(1, agent_config['num_copies'] + 1):
+#                 agent_config_copy = deepcopy(agent_config)
+#                 agent_config_copy['name'] += f' {num_agents + 1}'
+#                 agent_configs.append(agent_config_copy)
+#                 num_agents += 1
+#         else:
+#             agent_configs.append(agent_config)
+#             num_agents += 1
+#
+#     adv_embedding_path = config['adv_embedding_path']
+#     adv_embeddings = pickle.load(open(adv_embedding_path, 'rb'))
+#     # Adv embeddings for agents
+#     agents2items = {
+#         agent_config['name']: adv_embeddings[agent_config['adv_name']]
+#         for agent_config in agent_configs
+#     }
+#     # Adv values for agents equal to 1.0 for all agents and advs
+#     agents2item_values = {
+#         agent_config['name']: np.array([1.0] * agent_config['num_items'], dtype=np.float32)
+#         for agent_config in agent_configs
+#     }
+#     publisher_embeddings_path = config['publisher_embedding_path']
+#     publisher_embeddings = pickle.load(open(publisher_embeddings_path, 'rb'))
+#
+#     obfuscated_publisher_embeddings_path = config['obfuscated_publisher_embedding_path']
+#     obfuscated_publisher_embeddings = pickle.load(open(obfuscated_publisher_embeddings_path, 'rb'))
+#
+#     return (rng, config, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size,
+#             embedding_var, obs_embedding_size, adv_embeddings, publisher_embeddings, obfuscated_publisher_embeddings)
+
+def logalize_metrics(pub_stats: list[dict]) -> list[dict]:
+    for pub in pub_stats:
+        if pub['clicks'] > 0:
+            pub['clicks'] = np.log(pub['clicks'])
+        else:
+            # print(f'Clicks = 0 for publisher {pub["publisher"]}')
+            pub['clicks'] = 0
+        pub['impressions'] = np.log(pub['impressions'])
+        
+    return pub_stats
 
 def read_results(result_dir: str) -> pd.DataFrame:
     # Leggo i file
@@ -72,13 +136,15 @@ def simulate_auctions_sequentially(
 
 
 def simulation_run(
-        run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter,
-        rounds_per_iter, soglia_ctr, embedding_size, alpha, window_size
+        run, init_publisher_list, init_publisher_embeddings, sigmoids, auction, num_iter,
+        rounds_per_iter, soglia_ctr, embedding_size, alpha
 ):
     start_time_run = time.time()
     agent_stats = pd.DataFrame()
-    comb_linucb = SWCLinUCB(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list, window_size=window_size)
-    # comb_linucb = SWCLinUCB_arce_v(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list, window_size=window_size)
+    # comb_linucb = CombinatorialLinUCBNuo(alpha=alpha, d=embedding_size, publisher_list=init_publisher_list)
+    comb_linucb = CombinatorialLinUCBLog(
+        alpha=alpha, d=embedding_size, publisher_list=init_publisher_list
+    )
     for i in range(num_iter):
         print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}')
 
@@ -106,14 +172,11 @@ def simulation_run(
         print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Simulate auctions took {time.time() - start_time} seconds')
 
         for agent_id, agent in enumerate(auction.agents):
-            start_time = time.time()
             agent.update(iteration=i)
-            # print(f'Run {run}, Iteration {i}: Agent update took {time.time() - start_time} seconds')
 
             if agent.name.startswith('Nostro'):
                 start_time = time.time()
                 agent_stats_pub = agent.iteration_stats_per_publisher()
-                comb_linucb.update(agent_stats_pub, init_publisher_embeddings)
                 # for publisher_data in agent_stats_pub:
                 #     comb_linucb.update(
                 #         publisher_name=publisher_data['publisher'],
@@ -122,6 +185,8 @@ def simulation_run(
                 #         impressions=publisher_data['impressions'],
                 #         iteration=i
                 #     )
+                agent_stats_pub = logalize_metrics(agent_stats_pub)
+                comb_linucb.update(agent_stats_pub, init_publisher_embeddings)
                 print(f'Run {run}, Iteration {i}, soglia_ctr = {soglia_ctr}, alpha = {alpha}: Combinatorial LinUCB update took {time.time() - start_time} seconds')
 
                 start_time = time.time()
@@ -148,12 +213,14 @@ def simulation_run(
         how='left'
     )
 
+    linucb_theta_click, linucb_theta_impressions = comb_linucb.save_params()
+
     print(f'Run {run} took {time.time() - start_time_run} seconds')
 
-    return agent_stats, merged_df
+    return agent_stats, merged_df, linucb_theta_click, linucb_theta_impressions
 
 
-def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha, window_size):
+def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, obs_embedding_size, adv_embeddings, alpha):
     print(f'[RUN {run}] Running simulation with soglia_ctr = {soglia_ctr} and alpha = {alpha}')
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
@@ -162,10 +229,19 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
                                               init_publisher_embeddings, adv_embeddings)
     print(f'Generating deal took {time.time() - start_gen_deal} seconds')
 
-    agent_stats, merged_df = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha, window_size)
+    # init_publisher_obfuscated_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_obfuscated_list}
+
+    # agent_stats, merged_df, linucb_theta_click, linucb_theta_impressions = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
+    # agent_stats, merged_df = simulation_run(run, init_publisher_obfuscated_list, init_publisher_obfuscated_embeddings, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, obs_embedding_size, alpha)
+    agent_stats, merged_df, linucb_theta_click, linucb_theta_impressions = simulation_run(run, init_publisher_list, init_publisher_embeddings, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
 
     merged_df.to_csv(
-        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
+        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
+    
+    with open(os.path.join(output_dir, f'linucb_theta_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
+        pickle.dump(linucb_theta_click, f)
+    with open(os.path.join(output_dir, f'linucb_theta_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
+        pickle.dump(linucb_theta_impressions, f)
 
 
 if __name__ == "__main__":
@@ -174,31 +250,39 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     (rng, config, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size, embedding_var,
-     obs_embedding_size, adv_embeddings, publisher_embeddings, knapsack_params) = parse_config(args.config)
+     obs_embedding_size, adv_embeddings, publisher_embeddings, obfuscated_publisher_embeddings) = parse_config(args.config)
     agents = instantiate_agents(rng, agent_configs, agents2item_values, agents2items)
     auction, num_iter, rounds_per_iter, output_dir = instantiate_auction(rng, config, agents2items, agents2item_values,
                                                                          agents, max_slots, embedding_size,
                                                                          embedding_var, obs_embedding_size)
     publishers = instantiate_publishers(publisher_embeddings, rounds_per_iter)
+    # obfuscated_publishers = instantiate_publishers(obfuscated_publisher_embeddings, rounds_per_iter)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    # if not os.path.exists(os.path.join(output_dir, 'detailed_results')):
+    #     os.makedirs(os.path.join(output_dir, 'detailed_results'))
+    # if not os.path.exists(os.path.join(output_dir, 'model_params')):
+    #     os.makedirs(os.path.join(output_dir, 'model_params'))
 
     rng.shuffle(publishers)
-    init_publisher_list = publishers[:300]
+    # rng.shuffle(obfuscated_publishers)
+    num_pub = 300
+    init_publisher_list = publishers[:num_pub]
+    # init_publisher_list_names = [pub.name for pub in init_publisher_list]
+    # init_publisher_obfuscated_list = [pub_obf for pub_obf in obfuscated_publishers if pub_obf.name in init_publisher_list_names]
 
-    window_size_list = [70]
+    soglia_ctr_list = [0.9]
     alpha_list = [1]
-    soglia_ctr = 0.97
     
     tasks = []
-    for window_size in window_size_list:
+    for soglia_ctr in soglia_ctr_list:
         for alpha in alpha_list:
             for run in range(num_runs):
-                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha, window_size))
-    
+                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, obs_embedding_size, adv_embeddings, alpha))
+
     start_time = time.time()
-    with multiprocessing.Pool(processes=2) as pool:
+    with multiprocessing.Pool(processes=16) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 

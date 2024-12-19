@@ -84,7 +84,8 @@ def simulation_run(
     cucb = CUCBNuo(publisher_list=init_publisher_list, alpha=alpha)
     for i in range(num_iter):
         print(f'Iteration {i}, run {run}, alpha {alpha}, soglia_ctr {soglia_ctr}')
-        if i > 1:
+        initial_iteration = 1
+        if i > initial_iteration:
             publisher_list = cucb.round_iteration(
                 curr_publisher_list=publisher_list,
                 soglia_ctr=soglia_ctr,
@@ -93,6 +94,10 @@ def simulation_run(
             )
         else:
             cucb.set_time_t(i+1)
+            # If for the first 3 iterations the agent cannot win any auction of a certain publisher, it is removed
+            # if i == initial_iteration:
+            #     publisher_list = cucb.get_selected_publishers()
+            # else:
             publisher_list = init_publisher_list
         # Simulate auctions sequentially (faster)
         simulate_auctions_sequentially(
@@ -129,6 +134,8 @@ def simulation_run(
 
         auction.clear_revenue()
 
+    cucb_est_click, cucb_est_impressions = cucb.save_params()
+
     cucb_est_ucb = cucb.est_ucb
     merged_df = pd.merge(
         agent_stats,
@@ -136,7 +143,7 @@ def simulation_run(
         on=['publisher', 'Iteration', 'Run'],
         how='left'
     )
-    return agent_stats, merged_df
+    return agent_stats, merged_df, cucb_est_click, cucb_est_impressions
 
 
 def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings):
@@ -149,10 +156,15 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
     print(f'Generating deal took {time.time() - start_gen_deal} seconds')
 
     budget_results = simulation_run(run, init_publisher_list, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, alpha)
-    agent_stats, lin_ucb_params = budget_results
+    agent_stats, lin_ucb_params, cucb_est_click, cucb_est_impressions = budget_results
 
     lin_ucb_params.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
+    
+    with open(os.path.join(output_dir, f'cucb_est_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
+        pickle.dump(cucb_est_click, f)
+    with open(os.path.join(output_dir, f'cucb_est_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
+        pickle.dump(cucb_est_impressions, f)
 
 
 if __name__ == "__main__":
@@ -172,16 +184,24 @@ if __name__ == "__main__":
 
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
+    # Exclude the following publishers such that we always have publishers with at least 1 impression
+    pub_to_exclude = ['dolcipassioni.net', 'healthy.thewom.it', 'unita.it', 'disboard.org', 'ilclubdellericette.it', 
+                      'agrodolce.it', 'hovogliadidolce.it', 'giallozafferano.it', 'recetasgratis.net', 'prodottitipicitoscani.it', 
+                      'wiadomosci.onet.pl','approdocalabria.it', 'buttalapasta.it'
+                      ]
+    init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
 
     alpha_list = [1]
-    soglia_ctr = 0.85
+    soglia_ctr_list = [0.97]
+
     tasks = []
     for alpha in alpha_list:
-        for run in range(num_runs):
-            tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings))
+        for soglia_ctr in soglia_ctr_list:
+            for run in range(num_runs):
+                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=1) as pool:
+    with multiprocessing.Pool(processes=2) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 

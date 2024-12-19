@@ -1,15 +1,15 @@
 {
   "random_seed": 0,
-  "num_runs": 5,
-  "num_iter" : 700,
+  "num_runs": 10,
+  "num_iter" : 500,
   "rounds_per_iter": 200,
   "num_participants_per_round": 4,
-  "embedding_size": 11,
+  "embedding_size": 70,
   "embedding_var": 1.0,
-  "obs_embedding_size": 11,
+  "obs_embedding_size": 70,
   "allocation": "FirstPrice",
   "knapsack_params": {
-    "soglia_ctr": 0.004
+    "soglia_spent": 100
   },
   "agents": [
     {
@@ -22,8 +22,12 @@
         "kwargs": {}
       },
       "bidder": {
-        "type": "TruthfulBidder",
-        "kwargs": {}
+        "type": "PolicyLearningBidder",
+          "kwargs": {
+            "gamma_sigma":  0.02,
+            "init_gamma": 1.0,
+            "loss": "\"PPO\""
+          }
       }
     },
     {
@@ -111,7 +115,7 @@
       }
     }
   ],
-  "output_dir": "results/FP_Truthful_Oracle_sigmoids_cucb_gaus_emb_0_85/",
-  "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/adv_gaus_emb.pkl",
-  "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/pub_gaus_emb.pkl"
+  "output_dir": "results/FP_IPS_Oracle_sigmoids_swlinucb_26_11/",
+  "adv_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/ad_embeddings_red_70.pkl",
+  "publisher_embedding_path": "src/publisher_embedding/data/embeddings_to_pick/sites_embeddings_red_70.pkl"
 }

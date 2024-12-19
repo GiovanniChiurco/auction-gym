@@ -40,7 +40,10 @@ class CombinatorialLinUCBRight:
 
     def add_new_arm(self, publisher: Publisher):
         self.n_arms += 1
-        self.publisher_list.append(publisher.name)
+        self.publisher_list.append(publisher)
+        self.conf_bound[publisher.name] = 0
+        self.est_click[publisher.name] = 0
+        self.est_impr[publisher.name] = 0
 
     def update_arm(self, L, lower, publisher: Publisher, run: int, iteration: int):
         # Matrix inversion with Cholesky decomposition
@@ -51,7 +54,7 @@ class CombinatorialLinUCBRight:
         self.conf_bound[publisher.name] = self.alpha * np.sqrt(embedding.dot(x))
         # Aggiorna le stime di click e impression
         self.est_click[publisher.name] = max(0, np.dot(self.theta_click, embedding))
-        self.est_impr[publisher.name] = max(0, np.dot(self.theta_impr, embedding))
+        self.est_impr[publisher.name] = max(1, np.dot(self.theta_impr, embedding))
         # Save the parameters
         if self.linucb_params is None:
             self.linucb_params = pd.DataFrame({
@@ -113,9 +116,8 @@ class CombinatorialLinUCBRight:
         # Update A and thetas
         L, lower = self.compute_theta()
         for publisher in curr_publisher_list:
-            # Non ha senso controllare se l'arm è già presente, perché nelle prime 2 iterazioni provo tutti gli arms
-            # if not self.check_publisher_exist(publisher):
-            #     self.add_new_arm(publisher)
+            if not self.check_publisher_exist(publisher):
+                self.add_new_arm(publisher)
             # Update arms parameters
             self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
         # Ripeto i dati già presenti per statistiche successive
@@ -172,8 +174,8 @@ class CombinatorialLinUCBRight:
         L, lower = self.compute_theta()
         # Check if there are new arms (= new publishers in the list)
         for publisher in self.publisher_list:
-            # if not self.check_publisher_exist(publisher):
-            #     self.add_new_arm(publisher)
+            if not self.check_publisher_exist(publisher):
+                self.add_new_arm(publisher)
             # Update arms parameters
             self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
 
@@ -191,7 +193,7 @@ class CombinatorialLinUCBRight:
         curr_estimates = self.extract_estimates(run=run, iteration=iteration)
         # Add the UCBs to the dataframe
         curr_estimates.loc[:, 'ucb_clicks'] = curr_estimates['est_clicks'] + curr_estimates['conf_bound']
-        curr_estimates.loc[:, 'lcb_clicks'] = curr_estimates['est_clicks'] - curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'lcb_clicks'] = np.maximum(0, curr_estimates['est_clicks'] - curr_estimates['conf_bound'])
         curr_estimates.loc[:, 'ucb_impressions'] = curr_estimates['est_impressions'] + curr_estimates['conf_bound']
         curr_estimates.loc[:, 'lcb_impressions'] = curr_estimates['est_impressions'] - curr_estimates['conf_bound']
         # Get the data from the dataframe for the solver

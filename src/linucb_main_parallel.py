@@ -203,11 +203,11 @@ def simulation_run(
         how='left'
     )
 
-    # linucb_theta_click, linucb_theta_impressions = comb_linucb.save_params()
+    linucb_theta_click, linucb_theta_impressions = comb_linucb.save_params()
 
     print(f'Run {run} took {time.time() - start_time_run} seconds')
 
-    return agent_stats, merged_df# , linucb_theta_click, linucb_theta_impressions
+    return agent_stats, merged_df, linucb_theta_click, linucb_theta_impressions
 
 
 def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, obs_embedding_size, adv_embeddings, alpha):
@@ -223,15 +223,15 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
 
     # agent_stats, merged_df, linucb_theta_click, linucb_theta_impressions = simulation_run(run, init_publisher_list, init_publisher_embeddings, user_contexts, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
     # agent_stats, merged_df = simulation_run(run, init_publisher_obfuscated_list, init_publisher_obfuscated_embeddings, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, obs_embedding_size, alpha)
-    agent_stats, merged_df = simulation_run(run, init_publisher_list, init_publisher_embeddings, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
+    agent_stats, merged_df, linucb_theta_click, linucb_theta_impressions = simulation_run(run, init_publisher_list, init_publisher_embeddings, sigmoids, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, alpha)
 
     merged_df.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
     
-    # with open(os.path.join(output_dir, f'model_params/linucb_theta_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
-    #     pickle.dump(linucb_theta_click, f)
-    # with open(os.path.join(output_dir, f'model_params/linucb_theta_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
-    #     pickle.dump(linucb_theta_impressions, f)
+    with open(os.path.join(output_dir, f'linucb_theta_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
+        pickle.dump(linucb_theta_click, f)
+    with open(os.path.join(output_dir, f'linucb_theta_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
+        pickle.dump(linucb_theta_impressions, f)
 
 
 if __name__ == "__main__":
@@ -246,35 +246,30 @@ if __name__ == "__main__":
                                                                          agents, max_slots, embedding_size,
                                                                          embedding_var, obs_embedding_size)
     publishers = instantiate_publishers(publisher_embeddings, rounds_per_iter)
-    # obfuscated_publishers = instantiate_publishers(obfuscated_publisher_embeddings, rounds_per_iter)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    # if not os.path.exists(os.path.join(output_dir, 'detailed_results')):
-    #     os.makedirs(os.path.join(output_dir, 'detailed_results'))
-    # if not os.path.exists(os.path.join(output_dir, 'model_params')):
-    #     os.makedirs(os.path.join(output_dir, 'model_params'))
-
+    
     rng.shuffle(publishers)
-    # rng.shuffle(obfuscated_publishers)
+    
     num_pub = 300
     init_publisher_list = publishers[:num_pub]
-    # init_publisher_list_names = [pub.name for pub in init_publisher_list]
-    # init_publisher_obfuscated_list = [pub_obf for pub_obf in obfuscated_publishers if pub_obf.name in init_publisher_list_names]
-
-    soglia_ctr = 0.85
+    # Exclude the following publishers such that we always have publishers with at least 1 impression
+    pub_to_exclude = ['dolcipassioni.net', 'healthy.thewom.it', 'unita.it', 'disboard.org', 'ilclubdellericette.it', 
+                      'agrodolce.it', 'hovogliadidolce.it', 'giallozafferano.it', 'recetasgratis.net', 'prodottitipicitoscani.it', 
+                      'wiadomosci.onet.pl', 'approdocalabria.it', 'buttalapasta.it']
+    init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
+    
+    soglia_ctr_list = [0.9]
     alpha_list = [1]
     
     tasks = []
-    for alpha in alpha_list:
-        for run in range(num_runs):
-            tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, obs_embedding_size, adv_embeddings, alpha))
+    for soglia_ctr in soglia_ctr_list:
+        for alpha in alpha_list:
+            for run in range(num_runs):
+                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, obs_embedding_size, adv_embeddings, alpha))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=1) as pool:
+    with multiprocessing.Pool(processes=5) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
-
-    # Save grouped results
-    # grouped_results = read_results(output_dir)
-    # grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)

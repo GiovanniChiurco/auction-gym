@@ -1,18 +1,17 @@
 from typing import List
 import numpy as np
-import scipy.linalg
 import pandas as pd
+import scipy.linalg
 pd.options.mode.chained_assignment = None
 from Publisher import Publisher
-from Publisher_Reward import PublisherReward
 from KnapsackSolver import get_data, solver
 
 
-class SWCLinUCB:
+class SWCombinatorialLinUCBOpt:
     def __init__(self, alpha: float, d: int, publisher_list: List[Publisher], window_size: int):
         self.alpha = alpha
-        self.t = 0
         self.window_size = window_size
+        self.t = 0
         # Embedding size
         self.d = d
         self.publisher_list = publisher_list
@@ -34,11 +33,8 @@ class SWCLinUCB:
         self.est_impr = {
             publisher.name: 0 for publisher in publisher_list
         }
-        # Chiave=timestep, valore=x*x^T dei publisher selezionati
-        self.curr_dot_prod_emb = {}
-        self.curr_dot_prod_click = {}
-        self.curr_dot_prod_impr = {}
-        # Dataframe per salvare i parametri di LinUCB
+        self.curr_superarm = {}
+        self.curr_superarm_stats = None
         self.linucb_params = None
 
     def save_params(self):
@@ -53,14 +49,12 @@ class SWCLinUCB:
 
     def update_arm(self, L, lower, publisher: Publisher, run: int, iteration: int):
         # Matrix inversion with Cholesky decomposition
-        embedding = publisher.embedding  # Salvare embedding per evitare lookup ripetuti
-        # Aggiorna il confine di confidenza usando la fattorizzazione di Cholesky
-        # Risolvi Lx = embedding (forward substitution) e quindi L^Ty = x (back substitution)
+        embedding = publisher.embedding
         x = scipy.linalg.cho_solve((L, lower), embedding)
         self.conf_bound[publisher.name] = self.alpha * np.sqrt(embedding.dot(x))
         # Aggiorna le stime di click e impression
         self.est_click[publisher.name] = max(0, np.dot(self.theta_click, embedding))
-        self.est_impr[publisher.name] = max(0, np.dot(self.theta_impr, embedding))
+        self.est_impr[publisher.name] = max(1, np.dot(self.theta_impr, embedding))
         # Save the parameters
         if self.linucb_params is None:
             self.linucb_params = pd.DataFrame({
@@ -119,18 +113,17 @@ class SWCLinUCB:
     def round_iteration(
             self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None,
             soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None, soglia_ctr: float = None) -> List[Publisher]:
-        # Update the time
         self.t += 1
         # Update A and thetas
         L, lower = self.compute_theta()
-        for publisher in curr_publisher_list:
-            if not self.check_publisher_exist(publisher):
-                self.add_new_arm(publisher)
+        for publisher in self.publisher_list:
+            # if not self.check_publisher_exist(publisher):
+            #     self.add_new_arm(publisher)
             # Update arms parameters
             self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
         # Ripeto i dati già presenti per statistiche successive
-        not_updated_publishers = [publisher for publisher in self.publisher_list if publisher not in curr_publisher_list]
-        self.add_miss_rows(not_updated_publishers, run, iteration)
+        # not_updated_publishers = [publisher for publisher in self.publisher_list if publisher not in curr_publisher_list]
+        # self.add_miss_rows(not_updated_publishers, run, iteration)
         # Select the super-arm
         # il parametro publisher_list non viene passato al solver perché i dati necessari sono già presenti nel dataframe iteration_stats
         super_arm = self.knapsack_solver(
@@ -142,54 +135,43 @@ class SWCLinUCB:
             soglia_num_publisher=soglia_num_publisher,
             soglia_ctr=soglia_ctr
         )
+        
         if not super_arm:
+            self.curr_superarm[self.t] = curr_publisher_list
             # No solution found -> return the previous super-arm
             return curr_publisher_list
+        self.curr_superarm[self.t] = super_arm
         # Return the super-arm
         return super_arm
 
-    # def update(self, agent_stats_pub: List[dict], init_publisher_embeddings: dict):
-    #     dot_prod_emb = 0
-    #     dot_prod_click = np.zeros(self.d)
-    #     dot_prod_impr = np.zeros(self.d)
-    #     for publisher_data in agent_stats_pub:
-    #         publisher_embedding = init_publisher_embeddings[publisher_data['publisher']]
-    #         dot_prod_emb += np.outer(publisher_embedding, publisher_embedding)
-    #         dot_prod_click += publisher_data['clicks'] * publisher_embedding
-    #         dot_prod_impr += publisher_data['impressions'] * publisher_embedding
-    #     self.A += dot_prod_emb
-    #     self.b_click += dot_prod_click
-    #     self.b_impr += dot_prod_impr
-
     def update(self, agent_stats_pub: List[dict], init_publisher_embeddings: dict):
-        curr_publisher_embeddings = np.array([init_publisher_embeddings[publisher_data['publisher']] for publisher_data in agent_stats_pub])
-        curr_clicks = np.array([publisher_data['clicks'] for publisher_data in agent_stats_pub])
-        curr_impressions = np.array([publisher_data['impressions'] for publisher_data in agent_stats_pub])
+        for publisher_data in agent_stats_pub:
+            embedding = init_publisher_embeddings[publisher_data['publisher']]
+            self.A += np.outer(embedding, embedding)
+            self.b_click += publisher_data['clicks'] * embedding
+            self.b_impr += publisher_data['impressions'] * embedding
 
-        dot_prod_emb = np.dot(curr_publisher_embeddings.T, curr_publisher_embeddings)
+            curr_pub_stats = pd.DataFrame({
+                't': self.t,
+                'publisher': publisher_data['publisher'],
+                'clicks': publisher_data['clicks'],
+                'impressions': publisher_data['impressions']
+            }, index=[0])
 
-        dot_prod_click = np.dot(curr_publisher_embeddings.T, curr_clicks)
-        dot_prod_impr = np.dot(curr_publisher_embeddings.T, curr_impressions)
-
-        self.curr_dot_prod_emb[self.t] = dot_prod_emb
-        self.curr_dot_prod_click[self.t] = dot_prod_click
-        self.curr_dot_prod_impr[self.t] = dot_prod_impr
-
-        self.A += dot_prod_emb
-        self.b_click += dot_prod_click
-        self.b_impr += dot_prod_impr
-
-        if self.t > self.window_size:
-            dot_prod_emb_old = self.curr_dot_prod_emb[self.t - self.window_size]
-            dot_prod_click_old = self.curr_dot_prod_click[self.t - self.window_size]
-            dot_prod_impr_old = self.curr_dot_prod_impr[self.t - self.window_size]
-            self.A -= dot_prod_emb_old
-            self.b_click -= dot_prod_click_old
-            self.b_impr -= dot_prod_impr_old
+            if self.curr_superarm_stats is None:
+                self.curr_superarm_stats = curr_pub_stats
+            else:
+                self.curr_superarm_stats = pd.concat([self.curr_superarm_stats, curr_pub_stats], ignore_index=True)
+        if self.t > self.window_size - 1:
+            old_time = self.t - self.window_size
+            for old_pub in self.curr_superarm[old_time]:
+                self.A -= np.outer(old_pub.embedding, old_pub.embedding)
+                old_pub_stats = self.curr_superarm_stats[(self.curr_superarm_stats['publisher'] == old_pub.name) & (self.curr_superarm_stats['t'] == old_time)]
+                self.b_click -= old_pub_stats['clicks'].values[0] * old_pub.embedding
+                self.b_impr -= old_pub_stats['impressions'].values[0] * old_pub.embedding
 
 
     def initial_round(
-            
             self, run: int, iteration: int,
     ):
         L, lower = self.compute_theta()
@@ -210,7 +192,6 @@ class SWCLinUCB:
             self, run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
-        # curr_estimates = self.linucb_params.drop_duplicates(subset=['publisher'], keep='last')
         curr_estimates = self.extract_estimates(run=run, iteration=iteration)
         # Add the UCBs to the dataframe
         curr_estimates.loc[:, 'ucb_clicks'] = curr_estimates['est_clicks'] + curr_estimates['conf_bound']

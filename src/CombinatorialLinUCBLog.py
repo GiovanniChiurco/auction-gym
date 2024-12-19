@@ -8,11 +8,10 @@ from Publisher_Reward import PublisherReward
 from KnapsackSolver import get_data, solver
 
 
-class SWCLinUCB:
-    def __init__(self, alpha: float, d: int, publisher_list: List[Publisher], window_size: int):
+class CombinatorialLinUCBLog:
+    """ LinUCB algorithm """
+    def __init__(self, alpha: float, d: int, publisher_list: List[Publisher]):
         self.alpha = alpha
-        self.t = 0
-        self.window_size = window_size
         # Embedding size
         self.d = d
         self.publisher_list = publisher_list
@@ -34,11 +33,6 @@ class SWCLinUCB:
         self.est_impr = {
             publisher.name: 0 for publisher in publisher_list
         }
-        # Chiave=timestep, valore=x*x^T dei publisher selezionati
-        self.curr_dot_prod_emb = {}
-        self.curr_dot_prod_click = {}
-        self.curr_dot_prod_impr = {}
-        # Dataframe per salvare i parametri di LinUCB
         self.linucb_params = None
 
     def save_params(self):
@@ -59,8 +53,8 @@ class SWCLinUCB:
         x = scipy.linalg.cho_solve((L, lower), embedding)
         self.conf_bound[publisher.name] = self.alpha * np.sqrt(embedding.dot(x))
         # Aggiorna le stime di click e impression
-        self.est_click[publisher.name] = max(0, np.dot(self.theta_click, embedding))
-        self.est_impr[publisher.name] = max(0, np.dot(self.theta_impr, embedding))
+        self.est_click[publisher.name] = np.dot(self.theta_click, embedding)
+        self.est_impr[publisher.name] = np.dot(self.theta_impr, embedding)
         # Save the parameters
         if self.linucb_params is None:
             self.linucb_params = pd.DataFrame({
@@ -119,8 +113,6 @@ class SWCLinUCB:
     def round_iteration(
             self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None,
             soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None, soglia_ctr: float = None) -> List[Publisher]:
-        # Update the time
-        self.t += 1
         # Update A and thetas
         L, lower = self.compute_theta()
         for publisher in curr_publisher_list:
@@ -171,25 +163,12 @@ class SWCLinUCB:
         dot_prod_click = np.dot(curr_publisher_embeddings.T, curr_clicks)
         dot_prod_impr = np.dot(curr_publisher_embeddings.T, curr_impressions)
 
-        self.curr_dot_prod_emb[self.t] = dot_prod_emb
-        self.curr_dot_prod_click[self.t] = dot_prod_click
-        self.curr_dot_prod_impr[self.t] = dot_prod_impr
-
         self.A += dot_prod_emb
         self.b_click += dot_prod_click
         self.b_impr += dot_prod_impr
 
-        if self.t > self.window_size:
-            dot_prod_emb_old = self.curr_dot_prod_emb[self.t - self.window_size]
-            dot_prod_click_old = self.curr_dot_prod_click[self.t - self.window_size]
-            dot_prod_impr_old = self.curr_dot_prod_impr[self.t - self.window_size]
-            self.A -= dot_prod_emb_old
-            self.b_click -= dot_prod_click_old
-            self.b_impr -= dot_prod_impr_old
-
 
     def initial_round(
-            
             self, run: int, iteration: int,
     ):
         L, lower = self.compute_theta()
@@ -213,10 +192,11 @@ class SWCLinUCB:
         # curr_estimates = self.linucb_params.drop_duplicates(subset=['publisher'], keep='last')
         curr_estimates = self.extract_estimates(run=run, iteration=iteration)
         # Add the UCBs to the dataframe
-        curr_estimates.loc[:, 'ucb_clicks'] = curr_estimates['est_clicks'] + curr_estimates['conf_bound']
-        curr_estimates.loc[:, 'lcb_clicks'] = np.maximum(0, curr_estimates['est_clicks'] - curr_estimates['conf_bound'])
-        curr_estimates.loc[:, 'ucb_impressions'] = curr_estimates['est_impressions'] + curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'ucb_clicks'] = np.exp(curr_estimates['est_clicks']) + curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'lcb_clicks'] = np.exp(curr_estimates['est_clicks']) - curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'ucb_impressions'] = np.exp(curr_estimates['est_impressions']) + curr_estimates['conf_bound']
         curr_estimates.loc[:, 'lcb_impressions'] = curr_estimates['est_impressions'] - curr_estimates['conf_bound']
+        curr_estimates['ctr'] = curr_estimates['lcb_clicks'] / curr_estimates['ucb_impressions']
         # Get the data from the dataframe for the solver
         n, ucb_clicks, lcb_clicks, ucb_impressions, lcb_impressions = get_data(curr_estimates)
         results = solver(

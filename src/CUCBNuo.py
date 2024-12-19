@@ -32,6 +32,18 @@ class CUCBNuo:
         # Dataframe with LinUCB parameters per iteration
         self.est_ucb = None
 
+    def get_selected_publishers(self):
+        sel_pub = []
+        for publisher in self.publisher_list:
+            if self.Na[publisher.name] > 0:
+                sel_pub.append(publisher)
+        # Delete the publishers that have not been selected
+        self.publisher_list = sel_pub
+        return sel_pub
+
+    def save_params(self):
+        return self.exp_clicks, self.exp_impressions
+
     def update_arm(self, publisher_name: str, clicks: float, impressions: int):
         self.Na[publisher_name] += 1
         self.exp_clicks[publisher_name] += (clicks - self.exp_clicks[publisher_name]) / self.Na[publisher_name]
@@ -82,7 +94,7 @@ class CUCBNuo:
         curr_estimates = self.extract_estimates(run=run, iteration=iteration)
         # Add the UCBs to the dataframe
         curr_estimates.loc[:, 'ucb_clicks'] = curr_estimates['est_clicks'] + curr_estimates['conf_bound']
-        curr_estimates.loc[:, 'lcb_clicks'] = curr_estimates['est_clicks'] - curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'lcb_clicks'] = np.maximum(0, curr_estimates['est_clicks'] - curr_estimates['conf_bound'])
         curr_estimates.loc[:, 'ucb_impressions'] = curr_estimates['est_impressions'] + curr_estimates['conf_bound']
         curr_estimates.loc[:, 'lcb_impressions'] = curr_estimates['est_impressions'] - curr_estimates['conf_bound']
         # Get the data from the dataframe for the solver
@@ -112,12 +124,28 @@ class CUCBNuo:
             for publisher in self.publisher_list
             if publisher.name in publisher_names
         ]
+    
+    def add_new_arm(self, publisher: Publisher):
+        self.publisher_list.append(publisher)
+        self.exp_clicks[publisher.name] = 0
+        self.exp_impressions[publisher.name] = 0
+        self.conf_bound[publisher.name] = 0
+        self.Na[publisher.name] = 0
+    
+    def check_publisher_exist(self, publisher: Publisher):
+        for pub in self.publisher_list:
+            if pub.name == publisher.name:
+                return True
+        return False
 
     def round_iteration(
             self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
         self.t += 1
+        for publisher in curr_publisher_list:
+            if not self.check_publisher_exist(publisher):
+                self.add_new_arm(publisher)
         # Update actual means
         for publisher in self.publisher_list:
             self.update(publisher.name, run, iteration)
