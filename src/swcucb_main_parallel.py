@@ -76,7 +76,7 @@ def simulate_auctions_sequentially(
     for publisher in publisher_list:
         for j in range(rounds_per_iter):
             current_user_context = user_contexts[publisher.name][i][j]
-            auction.simulate_opportunity(publisher.name, current_user_context, sigmoids[publisher.name], i, j)
+            auction.simulate_opportunity(publisher.name, sigmoids[publisher.name], i, j)
 
 
 def simulation_run(
@@ -173,10 +173,15 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
+    # Exclude the following publishers such that we always have publishers with at least 1 impression
+    pub_to_exclude = ['dolcipassioni.net', 'healthy.thewom.it', 'unita.it', 'disboard.org', 'ilclubdellericette.it', 
+                      'agrodolce.it', 'hovogliadidolce.it', 'giallozafferano.it', 'recetasgratis.net', 'prodottitipicitoscani.it', 
+                      'wiadomosci.onet.pl', 'approdocalabria.it', 'buttalapasta.it']
+    init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
 
-    window_size_list = [70]
-    alpha_list = [0]
-    soglia_ctr = 0.97
+    window_size_list = [100]
+    alpha_list = [1]
+    soglia_ctr = 0.9
     tasks = []
     for window_size in window_size_list:
         for alpha in alpha_list:
@@ -184,10 +189,6 @@ if __name__ == "__main__":
                 tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, window_size))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=16) as pool:
+    with multiprocessing.Pool(processes=6) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
-
-    # Save grouped results
-    grouped_results = read_results(output_dir)
-    grouped_results.to_csv(os.path.join(output_dir, 'grouped_results.csv'), index=False)

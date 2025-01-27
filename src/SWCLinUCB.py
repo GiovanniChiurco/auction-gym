@@ -172,7 +172,7 @@ class SWCombinatorialLinUCBOpt:
 
 
     def initial_round(
-            self, run: int, iteration: int,
+            self, run: int, iteration: int, curr_publisher_list: List[Publisher]
     ):
         L, lower = self.compute_theta()
         # Check if there are new arms (= new publishers in the list)
@@ -181,6 +181,8 @@ class SWCombinatorialLinUCBOpt:
                 self.add_new_arm(publisher)
             # Update arms parameters
             self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
+        # Save the super-arm for the current timestamp
+        self.curr_superarm[iteration] = curr_publisher_list
 
     def check_publisher_exist(self, publisher: Publisher):
         for pub in self.publisher_list:

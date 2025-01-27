@@ -35,6 +35,20 @@ class TruthfulBidder(Bidder):
         return value * estimated_CTR
 
 
+class TruthfulBidderHalf(Bidder):
+    """ A bidder that bids truthfully """
+    def __init__(self, rng, tot_iterations):
+        super(TruthfulBidderHalf, self).__init__(rng)
+        self.truthful = True
+        self.tot_iterations = tot_iterations
+
+    def bid(self, value, estimated_CTR, num_iter):
+        if num_iter < self.tot_iterations // 3:
+            return value * estimated_CTR
+        else:
+            return 0.8 * (value * estimated_CTR)
+
+
 class EmpiricalShadedBidder(Bidder):
     """ A bidder that learns a single bidding factor gamma from past data """
 

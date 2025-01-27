@@ -1,5 +1,5 @@
 from AuctionAllocation import AllocationMechanism
-from Bidder import Bidder
+from Bidder import Bidder, TruthfulBidderHalf
 
 import numpy as np
 
@@ -48,7 +48,10 @@ class Auction:
             curr_sigmoid = sigmoids[agent.adv_name][num_iter][round]
             # Get the bid and the allocated item
             if isinstance(agent.allocator, OracleAllocator):
-                bid, item = agent.bid(publisher_name, curr_sigmoid)
+                if isinstance(agent.bidder, TruthfulBidderHalf):
+                    bid, item = agent.bid(publisher_name, curr_sigmoid, num_iter)
+                else:
+                    bid, item = agent.bid(publisher_name, curr_sigmoid)
             else:
                 bid, item = agent.bid(publisher_name, curr_sigmoid)
             bids.append(bid)

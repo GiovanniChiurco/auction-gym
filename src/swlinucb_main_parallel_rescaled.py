@@ -164,10 +164,10 @@ def run_simulation(output_dir, run, init_publisher_list, publisher_embeddings, a
     merged_df.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
     
-    with open(os.path.join(output_dir, f'linucb_theta_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.pkl'), 'wb') as f:
-        pickle.dump(linucb_theta_click, f)
-    with open(os.path.join(output_dir, f'linucb_theta_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.pkl'), 'wb') as f:
-        pickle.dump(linucb_theta_impressions, f)
+    # with open(os.path.join(output_dir, f'linucb_theta_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.pkl'), 'wb') as f:
+    #     pickle.dump(linucb_theta_click, f)
+    # with open(os.path.join(output_dir, f'linucb_theta_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.pkl'), 'wb') as f:
+    #     pickle.dump(linucb_theta_impressions, f)
 
 
 if __name__ == "__main__":
@@ -196,7 +196,7 @@ if __name__ == "__main__":
                       'wiadomosci.onet.pl', 'approdocalabria.it', 'buttalapasta.it']
     init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
 
-    soglia_ctr_list = [0.97]
+    soglia_ctr_list = [0.9]
     alpha_list = [1]
     
     tasks = []
@@ -207,6 +207,6 @@ if __name__ == "__main__":
                     tasks.append((output_dir, run, init_publisher_list, publisher_embeddings, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, obs_embedding_size, adv_embeddings, alpha, window_size))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=2) as pool:
+    with multiprocessing.Pool(processes=6) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')

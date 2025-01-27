@@ -45,7 +45,7 @@ class Agent:
         # return best_item, estim_CTRs[best_item]
         return best_item, estim_CTRs
 
-    def bid(self, publisher_name: str, precomputed_cos_sim: float):
+    def bid(self, publisher_name: str, precomputed_cos_sim: float, num_iter: int = None):
         # First, pick what item we want to choose
         best_item, estimated_CTR = self.select_item(precomputed_cos_sim)
 
@@ -53,7 +53,10 @@ class Agent:
         value = self.item_values[best_item]
 
         # Get the bid
-        bid = self.bidder.bid(value, estimated_CTR)
+        if num_iter is not None:
+            bid = self.bidder.bid(value, estimated_CTR, num_iter)
+        else:
+            bid = self.bidder.bid(value, estimated_CTR)
 
         # Log what we know so far
         self.logs.append(ImpressionOpportunity(# context=context,

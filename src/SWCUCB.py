@@ -61,7 +61,7 @@ class SWCUCB:
     def update(self, publisher_name: str, run: int, iteration: int):
         curr_Na = np.sum(self.window_Na[publisher_name])
         if curr_Na == 0:
-            adj_term = 0 
+            adj_term = np.inf
         else:
             adj_term = np.sqrt((2 * np.log(min(self.window_size, self.t))) / curr_Na)
 
@@ -89,16 +89,46 @@ class SWCUCB:
                 }, index=[0])
             ])
 
+    def extract_estimates(self, run: int, iteration: int):
+        """
+        Extract the estimates of the expected clicks and impressions for each arm from the dictionary to
+        a pandas dataframe for the knapsack solver.
+        In the simulator the curr_date parameter must be substituted with the run and the iteration.
+
+        Parameters
+        ----------
+        run : int
+            Current run number.
+        iteration : int
+            Current iteration number
+
+        Returns
+        -------
+        pd.DataFrame
+            Pandas dataframe with the columns 'publisher', 'est_clicks', 'est_impressions', 'conf_bound', 'Date'.
+        """
+        click_estimates = pd.DataFrame(self.exp_clicks.items(), columns=['publisher', 'est_clicks'])
+        impr_estimates = pd.DataFrame(self.exp_impressions.items(), columns=['publisher', 'est_impressions'])
+        confidence_bounds = pd.DataFrame(self.conf_bound.items(), columns=['publisher', 'conf_bound'])
+        estimates = pd.merge(click_estimates, impr_estimates, on='publisher')
+        estimates = pd.merge(estimates, confidence_bounds, on='publisher')
+        estimates['Run'] = run
+        estimates['Iteration'] = iteration
+        return estimates
+
     def knapsack_solver(
-            self, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
+            self, run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
-        curr_estimates = self.est_ucb.drop_duplicates(subset=['publisher'], keep='last')
+        curr_estimates = self.extract_estimates(run=run, iteration=iteration)
         # Add the UCBs to the dataframe
         curr_estimates.loc[:, 'ucb_clicks'] = curr_estimates['est_clicks'] + curr_estimates['conf_bound']
-        curr_estimates.loc[:, 'lcb_clicks'] = curr_estimates['est_clicks'] - curr_estimates['conf_bound']
+        curr_estimates.loc[:, 'lcb_clicks'] = np.maximum(0, curr_estimates['est_clicks'] - curr_estimates['conf_bound'])
         curr_estimates.loc[:, 'ucb_impressions'] = curr_estimates['est_impressions'] + curr_estimates['conf_bound']
         curr_estimates.loc[:, 'lcb_impressions'] = curr_estimates['est_impressions'] - curr_estimates['conf_bound']
+        # Exclude the publisher with infinite confidence bound from the solver to avoid numerical issues and save them for the end
+        inf_publisher = curr_estimates[curr_estimates['conf_bound'] == np.inf]
+        curr_estimates = curr_estimates[curr_estimates['conf_bound'] != np.inf]
         # Get the data from the dataframe for the solver
         n, ucb_clicks, lcb_clicks, ucb_impressions, lcb_impressions = get_data(curr_estimates)
         results = solver(
@@ -114,8 +144,15 @@ class SWCUCB:
             soglia_num_publisher=soglia_num_publisher,
             soglia_ctr=soglia_ctr
         )
+        if not inf_publisher.empty:
+            if results.empty:
+                results = inf_publisher
+            else:
+                results = pd.concat([results, inf_publisher])
         if results.empty:
-            results = curr_estimates
+            # No solution found
+            return []
+        
         publisher_names = results['publisher'].unique()
 
         return [
@@ -134,6 +171,8 @@ class SWCUCB:
             self.update(publisher.name, run, iteration)
         # Solve the knapsack problem
         selected_publishers = self.knapsack_solver(
+            run=run,
+            iteration=iteration,
             soglia_clicks=soglia_clicks,
             soglia_spent=soglia_spent,
             soglia_cpc=soglia_cpc,
