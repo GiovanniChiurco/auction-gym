@@ -4,8 +4,6 @@ import os
 import time
 
 import pandas as pd
-from CUCB import CUCB
-from CUCBNuo import CUCBNuo
 from new_main import *
 
 from ortools.linear_solver import pywraplp
@@ -68,20 +66,6 @@ def knapsack(
     n, clicks, impressions = get_data(df)
     return solver(df, n, clicks, impressions, soglia_ctr)
 
-# def get_partecipant_mask(A, num_participants_per_round, rng):    
-#     # Inizializza maschera di zeri
-#     mask = np.zeros_like(A)
-    
-#     # Itera su tutte le dimensioni tranne l'ultima
-#     for i in range(A.shape[0]):
-#         for j in range(A.shape[1]):
-#             for k in range(A.shape[2]):
-#                 # Seleziona x indici casuali
-#                 random_indices = rng.choice(A.shape[3], size=num_participants_per_round, replace=False)
-#                 # Imposta 1 nelle posizioni selezionate
-#                 mask[i,j,k,random_indices] = 1
-                
-#     return mask
 
 def get_partecipant_mask(A, num_participants_per_round, rng):
     # Dimensioni
@@ -229,46 +213,10 @@ def simulate_auctions(
     
     return results, group_pub_res
 
-def simulation_run(
-        run: int, init_publisher_list: list[Publisher], sim_auctions: pd.DataFrame, num_iter: int,
-        rounds_per_iter: int, soglia_ctr: float, alpha: float
-):
-    agent_stats = pd.DataFrame()
-    cucb = CUCBNuo(publisher_list=init_publisher_list, alpha=alpha)
-    for i in range(num_iter):
-        if i > 1:
-            publisher_list = cucb.round_iteration(
-                curr_publisher_list=publisher_list,
-                run=run,
-                iteration=i,
-                soglia_ctr=soglia_ctr
-            )
-        else:
-            cucb.set_time_t(i+1)
-            publisher_list = init_publisher_list
-
-        publisher_name_list = [publisher.name for publisher in publisher_list]
-        curr_iter_df = sim_auctions[(sim_auctions['Iteration'] == i)&(sim_auctions['publisher'].isin(publisher_name_list))]
-        agent_stats_pub = curr_iter_df.to_dict(orient='records')
-
-        group_iter = curr_iter_df.groupby('Iteration').agg({'clicks': 'sum', 'impressions': 'sum'}).reset_index()
-        group_iter['CTR'] = group_iter['clicks'] / group_iter['impressions']
-        print(f'[Run {run}, Iteration {i}] Actual CTR: {group_iter["CTR"].values[0]}')
-        
-        for publisher_data in agent_stats_pub:
-            cucb.update_arm(
-                publisher_name=publisher_data['publisher'],
-                clicks=publisher_data['clicks'],
-                impressions=publisher_data['impressions']
-            )
-
-        agent_stats = pd.concat([agent_stats, curr_iter_df])
-    return agent_stats
-
 
 def run_simulation(
-        output_dir: str, run: int, random_seed: int, init_publisher_list: list[Publisher], auction: Auction, num_iter: int, rounds_per_iter: int, 
-        soglia_ctr: float, alpha: float, embedding_size: int, adv_embeddings: dict, rng: np.random.Generator):
+        output_dir: str, run: int, random_seed: int, init_publisher_list: list[Publisher], num_iter: int, rounds_per_iter: int, 
+        soglia_ctr: float, alpha: float, embedding_size: int, adv_embeddings: dict, rng: np.random.Generator, num_participants_per_round: int):
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
 
@@ -283,21 +231,12 @@ def run_simulation(
         pub_list=[publisher.name for publisher in init_publisher_list],
         num_iter=num_iter,
         rounds_per_iter=rounds_per_iter,
-        num_participants_per_round=4,
+        num_participants_per_round=num_participants_per_round,
         noise_std=0.01,
         rng=rng
     )
     sim_auctions.to_csv(
         os.path.join(output_dir, f'sim_auctions_run_{run}.csv'), index=False)
-
-    opt_exp_results = knapsack(group_pub_res, soglia_ctr=soglia_ctr)
-    opt_exp_results.to_csv(
-        os.path.join(output_dir, f'opt_exp_results_run_{run}.csv'), index=False)
-
-    agent_stats = simulation_run(run, init_publisher_list, sim_auctions, num_iter, rounds_per_iter, soglia_ctr, alpha)
-
-    agent_stats.to_csv(
-        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
 
 
 
@@ -317,6 +256,7 @@ if __name__ == "__main__":
     publishers = instantiate_publishers(publisher_embeddings, rounds_per_iter)
 
     random_seed = config['random_seed']
+    num_participants_per_round = config['num_participants_per_round']
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -338,7 +278,7 @@ if __name__ == "__main__":
     for alpha in alpha_list:
         for soglia_ctr in soglia_ctr_list:
             for run in range(num_runs):
-                tasks.append((output_dir, run, random_seed, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings, rng))
+                tasks.append((output_dir, run, random_seed, init_publisher_list, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings, rng, num_participants_per_round))
 
     start_time = time.time()
     with multiprocessing.Pool(processes=1) as pool:
