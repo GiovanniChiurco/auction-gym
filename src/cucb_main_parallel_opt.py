@@ -146,8 +146,11 @@ def simulation_run(
     return agent_stats, merged_df, cucb_est_click, cucb_est_impressions
 
 
-def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings):
+def run_simulation(output_dir, run, random_seed, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings):
     print(f'[RUN {run}] Running simulation with soglia_ctr = {soglia_ctr} e alpha = {alpha}')
+
+    rng = np.random.default_rng(run+random_seed)
+    np.random.seed(run+random_seed)
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
     start_gen_deal = time.time()
@@ -161,10 +164,10 @@ def run_simulation(output_dir, run, init_publisher_list, auction, num_iter, roun
     lin_ucb_params.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
     
-    with open(os.path.join(output_dir, f'cucb_est_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
-        pickle.dump(cucb_est_click, f)
-    with open(os.path.join(output_dir, f'cucb_est_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
-        pickle.dump(cucb_est_impressions, f)
+    # with open(os.path.join(output_dir, f'cucb_est_click_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
+    #     pickle.dump(cucb_est_click, f)
+    # with open(os.path.join(output_dir, f'cucb_est_impressions_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.pkl'), 'wb') as f:
+    #     pickle.dump(cucb_est_impressions, f)
 
 
 if __name__ == "__main__":
@@ -182,6 +185,11 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    random_seed = config['random_seed']
+
+    # Filter adv_embeddings
+    adv_embeddings = {agent.adv_name: adv_embeddings[agent.adv_name] for agent in agents}
+
     rng.shuffle(publishers)
     init_publisher_list = publishers[:300]
     # Exclude the following publishers such that we always have publishers with at least 1 impression
@@ -192,16 +200,16 @@ if __name__ == "__main__":
     init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
 
     alpha_list = [1]
-    soglia_ctr_list = [0.97]
+    soglia_ctr_list = [0.9]
 
     tasks = []
     for alpha in alpha_list:
         for soglia_ctr in soglia_ctr_list:
             for run in range(num_runs):
-                tasks.append((output_dir, run, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings))
+                tasks.append((output_dir, run, random_seed, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=2) as pool:
+    with multiprocessing.Pool(processes=1) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')
 

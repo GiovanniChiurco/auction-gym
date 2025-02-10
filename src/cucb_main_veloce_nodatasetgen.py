@@ -8,6 +8,66 @@ from CUCB import CUCB
 from CUCBNuo import CUCBNuo
 from new_main import *
 
+from ortools.linear_solver import pywraplp
+
+
+def get_data(
+        df: pd.DataFrame,
+) -> tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    n = df.shape[0]
+    clicks = df['clicks'].values
+    impressions = df['impressions'].values
+    return n, clicks, impressions
+
+def solver(
+        df: pd.DataFrame,
+        n: int,
+        clicks: np.ndarray,
+        impressions: np.ndarray,
+        soglia_ctr: float = None,
+) -> pd.DataFrame:
+    solver = pywraplp.Solver.CreateSolver('SCIP')
+    # Boolean variables
+    x = [solver.BoolVar(f'x{i}') for i in range(n)]
+    x_np = np.array(x)
+    # Objective function
+    solver.Maximize(np.dot(clicks, x_np))
+    if soglia_ctr is not None:
+        # CTR constraint
+        solver.Add(np.dot(clicks, x_np) >= soglia_ctr * np.dot(impressions, x_np))
+    # Solve the knapsack problem
+    status = solver.Solve()
+    results = pd.DataFrame(columns=df.columns)
+    # Cycle over the boolean variables to get the selected rows
+    if status == pywraplp.Solver.OPTIMAL:
+        for i in range(n):
+            if x[i].solution_value() == 1:
+                if results.empty:
+                    results = df.iloc[[i]]
+                else:
+                    results = pd.concat([results, df.iloc[[i]]])
+        print("Knapsack Solver: Optimal solution!")
+        print(f"Total clicks = {results['clicks'].sum()}")
+        print(f"Total impressions = {results['impressions'].sum()}")
+        print(f"Number of selected publishers = {results.shape[0]}")
+        if soglia_ctr is not None:
+            if results['impressions'].sum() != 0:
+                print(f"CTR = {results['clicks'].sum() / results['impressions'].sum()}")
+            else:
+                print("CTR = undefined (division by zero)")
+    else:
+        print("Knapsack Solver: No feasible solution found.")
+        # Return empty dataframe
+        return pd.DataFrame()
+    return results
+
+def knapsack(
+        df: pd.DataFrame,
+        soglia_ctr: float = None,
+) -> pd.DataFrame:
+    n, clicks, impressions = get_data(df)
+    return solver(df, n, clicks, impressions, soglia_ctr)
+
 
 def simulation_run(
         run: int, init_publisher_list: list[Publisher], sim_auctions: pd.DataFrame, num_iter: int,
@@ -16,7 +76,7 @@ def simulation_run(
     agent_stats = pd.DataFrame()
     cucb = CUCBNuo(publisher_list=init_publisher_list, alpha=alpha)
     for i in range(num_iter):
-        if i > 1:
+        if i > 0:
             publisher_list = cucb.round_iteration(
                 curr_publisher_list=publisher_list,
                 run=run,
@@ -56,6 +116,12 @@ def run_simulation(
 
     # Read the simulation data
     sim_auctions = pd.read_csv(os.path.join(output_dir, f'sim_auctions_run_{run}.csv'))
+    group_pub_res = pd.read_csv(os.path.join(output_dir, f'group_pub_res_run_{run}.csv'))
+
+    if not os.path.exists(os.path.join(output_dir, f'opt_exp_results_run_{run}.csv')):
+        # Run the knapsack algorithm
+        opt_exp_results = knapsack(group_pub_res, soglia_ctr=soglia_ctr)
+        opt_exp_results.to_csv(os.path.join(output_dir, f'opt_exp_results_run_{run}.csv'), index=False)
 
     agent_stats = simulation_run(run, init_publisher_list, sim_auctions, num_iter, rounds_per_iter, soglia_ctr, alpha)
 
@@ -95,7 +161,7 @@ if __name__ == "__main__":
 
     # Hyperparameters
     alpha_list = [1]
-    soglia_ctr_list = [0.9]
+    soglia_ctr_list = [0.86]
 
     tasks = []
     for alpha in alpha_list:
@@ -104,6 +170,6 @@ if __name__ == "__main__":
                 tasks.append((output_dir, run, random_seed, init_publisher_list, auction, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings, rng))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=10) as pool:
+    with multiprocessing.Pool(processes=16) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')

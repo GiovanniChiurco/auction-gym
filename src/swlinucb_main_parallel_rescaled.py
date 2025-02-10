@@ -186,6 +186,9 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    # Filter adv_embeddings
+    adv_embeddings = {agent.adv_name: adv_embeddings[agent.adv_name] for agent in agents}
+
     rng.shuffle(publishers)
     
     num_pub = 300

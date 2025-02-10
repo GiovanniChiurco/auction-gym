@@ -162,7 +162,7 @@ class SWCUCB:
         ]
 
     def round_iteration(
-            self, run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
+            self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None, soglia_spent: float = None, soglia_cpc: float = None,
             soglia_num_publisher: int = None, soglia_ctr: float = None
     ) -> List[Publisher]:
         self.t += 1
@@ -185,6 +185,9 @@ class SWCUCB:
                 self.window_clicks[publisher.name].append(0)
                 self.window_impressions[publisher.name].append(0)
                 self.window_Na[publisher.name].append(0)
+        if not selected_publishers:
+            # No solution found -> return the previous super-arm
+            return curr_publisher_list
         return selected_publishers
 
     def set_time_t(self, t: int):

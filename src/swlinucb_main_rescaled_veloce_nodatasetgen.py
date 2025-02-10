@@ -152,10 +152,12 @@ def simulation_run(
             )
         else:
             publisher_list = init_publisher_list
-            comb_linucb.curr_superarm[i] = publisher_list
+            # comb_linucb.curr_superarm[i] = publisher_list
+            comb_linucb.initial_round(run=run, iteration=i, curr_publisher_list=publisher_list)
 
         publisher_name_list = [publisher.name for publisher in publisher_list]
         curr_iter_df = sim_auctions[(sim_auctions['Iteration'] == i)&(sim_auctions['publisher'].isin(publisher_name_list))]
+        curr_iter_df['Run'] = run
         agent_stats_pub = curr_iter_df.to_dict(orient='records')
 
         group_iter = curr_iter_df.groupby('Iteration').agg({'clicks': 'sum', 'impressions': 'sum'}).reset_index()
@@ -166,13 +168,15 @@ def simulation_run(
 
         agent_stats = pd.concat([agent_stats, curr_iter_df])
 
-    return agent_stats
+    model_estimates = comb_linucb.linucb_params
+    agent_stats = pd.merge(agent_stats, model_estimates, on=['publisher', 'Iteration', 'Run'], how='left')
+
+    return agent_stats, model_estimates
 
 
 def run_simulation(
         output_dir: str, run: int, random_seed: int, init_publisher_list: list[Publisher], publisher_embeddings: dict, num_iter: int, rounds_per_iter: int, 
         soglia_ctr: float, embedding_size: int, adv_embeddings: dict, alpha: float, rng: np.random.Generator = None, iteration_drift: int = 30, num_participants_per_round: int = 4, window_size: int = 10):
-
     # Set up Random Number Generator
     # Different seed for each run
     rng = np.random.default_rng(run+random_seed)
@@ -191,10 +195,12 @@ def run_simulation(
 
     rescaled_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
 
-    agent_stats = simulation_run(run, init_publisher_list, rescaled_publisher_embeddings, sim_auctions, num_iter, soglia_ctr, embedding_size, alpha, window_size)
+    agent_stats, model_estimates = simulation_run(run, init_publisher_list, rescaled_publisher_embeddings, sim_auctions, num_iter, soglia_ctr, embedding_size, alpha, window_size)
 
     agent_stats.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
+    model_estimates.to_csv(
+        os.path.join(output_dir, f'model_estimates_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
 
 
 if __name__ == "__main__":
@@ -228,7 +234,7 @@ if __name__ == "__main__":
                       'wiadomosci.onet.pl', 'approdocalabria.it', 'buttalapasta.it']
     init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
     
-    soglia_ctr_list = [0.75]
+    soglia_ctr_list = [0.9]
     alpha_list = [1]
     
     tasks = []
@@ -239,6 +245,6 @@ if __name__ == "__main__":
                     tasks.append((output_dir, run, random_seed, init_publisher_list, publisher_embeddings, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha, rng, iteration_drift, num_participants_per_round, window_size))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=10) as pool:
+    with multiprocessing.Pool(processes=16) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')

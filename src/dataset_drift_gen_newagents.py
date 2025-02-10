@@ -103,7 +103,8 @@ def get_partecipant_mask(A, num_participants_per_round, rng):
 
 def simulate_auctions(
     publisher_embeddings: dict,
-    adv_embeddings: dict,
+    adv_pre_drift: dict,
+    adv_post_drift: dict,
     pub_list: list,
     num_iter: int,
     rounds_per_iter: int,
@@ -130,16 +131,24 @@ def simulate_auctions(
     print(f"Converting arrays took: {time.time() - t1_a:.4f} seconds")
     t1_b = time.time()
     
-    publisher_embeddings_array_tiled = np.tile(publisher_embeddings_array, 
-                                             (num_iter, rounds_per_iter, 1, 1))
+    publisher_embeddings_array_tiled_pre_drift = np.tile(publisher_embeddings_array, 
+                                             (iteration_drift, rounds_per_iter, 1, 1))
+    publisher_embeddings_array_tiled_post_drift = np.tile(publisher_embeddings_array, 
+                                             (num_iter-iteration_drift, rounds_per_iter, 1, 1))
     
     print(f"Tiling arrays took: {time.time() - t1_b:.4f} seconds")
     t1_c = time.time()
 
     # Create and add noise
 
-    publisher_embeddings_array_tiled = rng.normal(
-        loc=publisher_embeddings_array_tiled,  # usa l'array esistente come media
+    publisher_embeddings_array_tiled_pre_drift = rng.normal(
+        loc=publisher_embeddings_array_tiled_pre_drift,  # usa l'array esistente come media
+        scale=noise_std,                        
+        size=None,                             # usa la dimensione dell'array esistente
+    ).astype(np.float32)
+
+    publisher_embeddings_array_tiled_post_drift = rng.normal(
+        loc=publisher_embeddings_array_tiled_post_drift,  # usa l'array esistente come media
         scale=noise_std,                        
         size=None,                             # usa la dimensione dell'array esistente
     ).astype(np.float32)
@@ -148,22 +157,35 @@ def simulate_auctions(
     # Convert advertiser embeddings and compute scalar products
     t2 = time.time()
     
-    adv_embeddings_array = np.array(list(adv_embeddings.values()), dtype=np.float32)
-    
-    # Reshape for better cache utilization
-    pub_shape = publisher_embeddings_array_tiled.shape
-    publisher_embeddings_array_tiled = publisher_embeddings_array_tiled.reshape(-1, pub_shape[-1])
-    scalar_products = np.dot(publisher_embeddings_array_tiled, adv_embeddings_array.T)
-    scalar_products = scalar_products.reshape(pub_shape[0], pub_shape[1], pub_shape[2], -1)
+    adv_pre_drift = np.array(list(adv_pre_drift.values()), dtype=np.float32)
+    adv_post_drift = np.array(list(adv_post_drift.values()), dtype=np.float32)
+
+    pub_shape_pre_drift = publisher_embeddings_array_tiled_pre_drift.shape
+    publisher_embeddings_array_tiled_pre_drift = publisher_embeddings_array_tiled_pre_drift.reshape(-1, pub_shape_pre_drift[-1])
+
+    pub_shape_post_drift = publisher_embeddings_array_tiled_post_drift.shape
+    publisher_embeddings_array_tiled_post_drift = publisher_embeddings_array_tiled_post_drift.reshape(-1, pub_shape_post_drift[-1])
+
+    scalar_products_pre_drift = np.dot(publisher_embeddings_array_tiled_pre_drift, adv_pre_drift.T)
+    scalar_products_pre_drift = scalar_products_pre_drift.reshape(pub_shape_pre_drift[0], pub_shape_pre_drift[1], pub_shape_pre_drift[2], -1)
+
+    scalar_products_post_drift = np.dot(publisher_embeddings_array_tiled_post_drift, adv_post_drift.T)
+    scalar_products_post_drift = scalar_products_post_drift.reshape(pub_shape_post_drift[0], pub_shape_post_drift[1], pub_shape_post_drift[2], -1)
 
     print(f"Computing scalar products took: {time.time() - t2:.4f} seconds")
     
     # Compute sigmoids
     t3 = time.time()
     
-    mean_scores = np.mean(scalar_products)
-    std_scores = np.std(scalar_products)
-    sigmoids = 1 / (1 + np.exp(-(scalar_products - mean_scores) / (0.5 * std_scores)))
+    mean_scores_pre_drift = np.mean(scalar_products_pre_drift)
+    std_scores_pre_drift = np.std(scalar_products_pre_drift)
+    sigmoids_pre_drift = 1 / (1 + np.exp(-(scalar_products_pre_drift - mean_scores_pre_drift) / (0.5 * std_scores_pre_drift)))
+
+    mean_scores_post_drift = np.mean(scalar_products_post_drift)
+    std_scores_post_drift = np.std(scalar_products_post_drift)
+    sigmoids_post_drift = 1 / (1 + np.exp(-(scalar_products_post_drift - mean_scores_post_drift) / (0.5 * std_scores_post_drift)))
+
+    sigmoids = np.concatenate([sigmoids_pre_drift, sigmoids_post_drift], axis=0)
     
     print(f"Computing sigmoids took: {time.time() - t3:.4f} seconds")
     
@@ -179,10 +201,6 @@ def simulate_auctions(
     partecipant_sigmoids = sigmoids * partecipant_mask
     
     print(f"Multiplying sigmoids took: {time.time() - t4_b:.4f} seconds")
-
-    # From the 30-th iteration, our bids are the 80% of the actual ones
-    # The CTR remains the same to determine click/no-click
-    partecipant_sigmoids[iteration_drift:,:,:,0] = partecipant_sigmoids[iteration_drift:,:,:,0] * 0.8
 
     # Determine winners and calculate CTR/impressions
     t5 = time.time()
@@ -234,7 +252,7 @@ def simulate_auctions(
 
 def run_simulation(
         output_dir: str, run: int, random_seed: int, init_publisher_list: list[Publisher], publisher_embeddings: dict, num_iter: int, rounds_per_iter: int, 
-        embedding_size: int, adv_embeddings: dict, rng: np.random.Generator = None, iteration_drift: int = 30, num_participants_per_round: int = 4):
+        embedding_size: int, adv_pre_drift: dict, adv_post_drift: dict, rng: np.random.Generator = None, iteration_drift: int = 30, num_participants_per_round: int = 4):
 
     init_publisher_embeddings = {publisher.name: publisher_embeddings[publisher.name] for publisher in init_publisher_list}
 
@@ -245,7 +263,8 @@ def run_simulation(
 
     sim_auctions, group_pub_res = simulate_auctions(
         publisher_embeddings=init_publisher_embeddings,
-        adv_embeddings=adv_embeddings,
+        adv_pre_drift=adv_pre_drift,
+        adv_post_drift=adv_post_drift,
         pub_list=[publisher.name for publisher in init_publisher_list],
         num_iter=num_iter,
         rounds_per_iter=rounds_per_iter,
@@ -279,7 +298,13 @@ if __name__ == "__main__":
     num_participants_per_round = config['num_participants_per_round']
     iteration_drift = config['iteration_drift']
     # Filter adv_embeddings
-    adv_embeddings = {agent.adv_name: adv_embeddings[agent.adv_name] for agent in agents}
+    adv_pre_drift = {agent.adv_name: adv_embeddings[agent.adv_name] for agent in agents}
+    adv_post_drift = {}
+    adv_post_drift['Racer 1000'] = adv_pre_drift['Racer 1000']
+    adv_post_drift['Speedster GT'] = adv_pre_drift['Speedster GT']
+    for agent_name, agent_emb in adv_embeddings.items():
+        if agent_name not in adv_pre_drift.keys():
+            adv_post_drift[agent_name] = agent_emb
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -296,9 +321,9 @@ if __name__ == "__main__":
     
     tasks = []
     for run in range(num_runs):
-        tasks.append((output_dir, run, random_seed, init_publisher_list, publisher_embeddings, num_iter, rounds_per_iter, embedding_size, adv_embeddings, rng, iteration_drift, num_participants_per_round))
+        tasks.append((output_dir, run, random_seed, init_publisher_list, publisher_embeddings, num_iter, rounds_per_iter, embedding_size, adv_pre_drift, adv_post_drift, rng, iteration_drift, num_participants_per_round))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=1) as pool:
+    with multiprocessing.Pool(processes=2) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')

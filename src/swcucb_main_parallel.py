@@ -172,6 +172,10 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     rng.shuffle(publishers)
+
+    # Filter adv_embeddings
+    adv_embeddings = {agent.adv_name: adv_embeddings[agent.adv_name] for agent in agents}
+    
     init_publisher_list = publishers[:300]
     # Exclude the following publishers such that we always have publishers with at least 1 impression
     pub_to_exclude = ['dolcipassioni.net', 'healthy.thewom.it', 'unita.it', 'disboard.org', 'ilclubdellericette.it', 

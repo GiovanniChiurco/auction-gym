@@ -9,62 +9,6 @@ import time
 import pickle
 import time
 
-def parse_config(path):
-    with open(path) as f:
-        config = json.load(f)
-
-    # Set up Random Number Generator
-    random_seed = config['random_seed']
-    rng = np.random.default_rng(random_seed)
-    np.random.seed(random_seed)
-
-    # Number of runs
-    num_runs = config['num_runs'] if 'num_runs' in config.keys() else 1
-
-    # Max. number of slots in every auction round
-    # Multi-slot is currently not fully supported.
-    max_slots = 1
-
-    # Technical parameters for distribution of latent embeddings
-    embedding_size = config['embedding_size']
-    embedding_var = config['embedding_var']
-    obs_embedding_size = config['obs_embedding_size']
-
-    # Expand agent-config if there are multiple copies
-    agent_configs = []
-    num_agents = 0
-    for agent_config in config['agents']:
-        if 'num_copies' in agent_config.keys():
-            for i in range(1, agent_config['num_copies'] + 1):
-                agent_config_copy = deepcopy(agent_config)
-                agent_config_copy['name'] += f' {num_agents + 1}'
-                agent_configs.append(agent_config_copy)
-                num_agents += 1
-        else:
-            agent_configs.append(agent_config)
-            num_agents += 1
-
-    adv_embedding_path = config['adv_embedding_path']
-    adv_embeddings = pickle.load(open(adv_embedding_path, 'rb'))
-    # Adv embeddings for agents
-    agents2items = {
-        agent_config['name']: adv_embeddings[agent_config['adv_name']]
-        for agent_config in agent_configs
-    }
-    # Adv values for agents equal to 1.0 for all agents and advs
-    agents2item_values = {
-        agent_config['name']: np.array([1.0] * agent_config['num_items'], dtype=np.float32)
-        for agent_config in agent_configs
-    }
-    publisher_embeddings_path = config['publisher_embedding_path']
-    publisher_embeddings = pickle.load(open(publisher_embeddings_path, 'rb'))
-    # Rescaled publisher embeddings
-    rescaled_publisher_embeddings_path = config['rescaled_publisher_embedding_path']
-    rescaled_publisher_embeddings = pickle.load(open(rescaled_publisher_embeddings_path, 'rb'))
-
-    return (rng, config, random_seed, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size,
-            embedding_var, obs_embedding_size, adv_embeddings, publisher_embeddings, rescaled_publisher_embeddings)
-
 from ortools.linear_solver import pywraplp
 
 
@@ -179,9 +123,7 @@ def run_simulation(
         opt_exp_results.to_csv(
             os.path.join(output_dir, f'opt_exp_results_run_{run}.csv'), index=False)
 
-    rescaled_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
-
-    agent_stats = simulation_run(run, init_publisher_list, rescaled_publisher_embeddings, sim_auctions, num_iter, soglia_ctr, embedding_size, alpha)
+    agent_stats = simulation_run(run, init_publisher_list, publisher_embeddings, sim_auctions, num_iter, soglia_ctr, embedding_size, alpha)
 
     agent_stats.to_csv(
         os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
@@ -194,13 +136,15 @@ if __name__ == "__main__":
     parser.add_argument('config', type=str, help='Path to experiment configuration file')
     args = parser.parse_args()
 
-    (rng, config, random_seed, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size, embedding_var,
-     obs_embedding_size, adv_embeddings, publisher_embeddings, rescaled_publisher_embeddings) = parse_config(args.config)
+    (rng, config, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size, embedding_var,
+     obs_embedding_size, adv_embeddings, publisher_embeddings, knapsack_params) = parse_config(args.config)
     agents = instantiate_agents(rng, agent_configs, agents2item_values, agents2items)
     auction, num_iter, rounds_per_iter, output_dir = instantiate_auction(rng, config, agents2items, agents2item_values,
                                                                          agents, max_slots, embedding_size,
                                                                          embedding_var, obs_embedding_size)
-    publishers = instantiate_publishers(rescaled_publisher_embeddings, rounds_per_iter)
+    publishers = instantiate_publishers(publisher_embeddings, rounds_per_iter)
+
+    random_seed = config['random_seed']
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -215,7 +159,7 @@ if __name__ == "__main__":
                       'wiadomosci.onet.pl', 'approdocalabria.it', 'buttalapasta.it']
     init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
     
-    soglia_ctr_list = [0.86]
+    soglia_ctr_list = [0.97]
     alpha_list = [1]
     
     tasks = []

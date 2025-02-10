@@ -111,6 +111,7 @@ def simulate_auctions(
     noise_std: float = 0.01,
     rng: np.random.Generator = None
 ) -> pd.DataFrame:
+    print(f"Starting simulation with {num_iter} iterations and {rounds_per_iter} rounds per iteration. Number of publishers: {len(pub_list)}. Number of advertisers: {len(adv_embeddings)}")
     if rng is None:
         rng = np.random.default_rng()
         
@@ -216,7 +217,7 @@ def simulate_auctions(
 
 def run_simulation(
         output_dir: str, run: int, random_seed: int, init_publisher_list: list[Publisher], num_iter: int, rounds_per_iter: int, 
-        soglia_ctr: float, alpha: float, embedding_size: int, adv_embeddings: dict, rng: np.random.Generator, num_participants_per_round: int):
+        embedding_size: int, adv_embeddings: dict, rng: np.random.Generator, num_participants_per_round: int):
 
     init_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
 
@@ -237,6 +238,8 @@ def run_simulation(
     )
     sim_auctions.to_csv(
         os.path.join(output_dir, f'sim_auctions_run_{run}.csv'), index=False)
+    group_pub_res.to_csv(
+        os.path.join(output_dir, f'group_pub_res_run_{run}.csv'), index=False)
 
 
 
@@ -257,6 +260,8 @@ if __name__ == "__main__":
 
     random_seed = config['random_seed']
     num_participants_per_round = config['num_participants_per_round']
+    # Filter adv_embeddings
+    adv_embeddings = {agent.adv_name: adv_embeddings[agent.adv_name] for agent in agents}
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -270,15 +275,9 @@ if __name__ == "__main__":
                       ]
     init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
 
-    # Hyperparameters
-    alpha_list = [1]
-    soglia_ctr_list = [0.7]
-
     tasks = []
-    for alpha in alpha_list:
-        for soglia_ctr in soglia_ctr_list:
-            for run in range(num_runs):
-                tasks.append((output_dir, run, random_seed, init_publisher_list, num_iter, rounds_per_iter, soglia_ctr, alpha, embedding_size, adv_embeddings, rng, num_participants_per_round))
+    for run in range(num_runs):
+        tasks.append((output_dir, run, random_seed, init_publisher_list, num_iter, rounds_per_iter, embedding_size, adv_embeddings, rng, num_participants_per_round))
 
     start_time = time.time()
     with multiprocessing.Pool(processes=1) as pool:

@@ -113,7 +113,6 @@ class SWCombinatorialLinUCBOpt:
     def round_iteration(
             self, curr_publisher_list: List[Publisher], run: int, iteration: int, soglia_clicks: float = None,
             soglia_spent: float = None, soglia_cpc: float = None, soglia_num_publisher: int = None, soglia_ctr: float = None) -> List[Publisher]:
-        self.t += 1
         # Update A and thetas
         L, lower = self.compute_theta()
         for publisher in self.publisher_list:
@@ -162,13 +161,14 @@ class SWCombinatorialLinUCBOpt:
                 self.curr_superarm_stats = curr_pub_stats
             else:
                 self.curr_superarm_stats = pd.concat([self.curr_superarm_stats, curr_pub_stats], ignore_index=True)
-        if self.t > self.window_size - 1:
+        if self.t >= self.window_size:
             old_time = self.t - self.window_size
             for old_pub in self.curr_superarm[old_time]:
                 self.A -= np.outer(old_pub.embedding, old_pub.embedding)
                 old_pub_stats = self.curr_superarm_stats[(self.curr_superarm_stats['publisher'] == old_pub.name) & (self.curr_superarm_stats['t'] == old_time)]
                 self.b_click -= old_pub_stats['clicks'].values[0] * old_pub.embedding
                 self.b_impr -= old_pub_stats['impressions'].values[0] * old_pub.embedding
+        self.t += 1
 
 
     def initial_round(
@@ -182,7 +182,7 @@ class SWCombinatorialLinUCBOpt:
             # Update arms parameters
             self.update_arm(L, lower, publisher=publisher, run=run, iteration=iteration)
         # Save the super-arm for the current timestamp
-        self.curr_superarm[iteration] = curr_publisher_list
+        self.curr_superarm[self.t] = curr_publisher_list
 
     def check_publisher_exist(self, publisher: Publisher):
         for pub in self.publisher_list:

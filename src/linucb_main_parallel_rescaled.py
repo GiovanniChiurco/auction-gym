@@ -183,6 +183,9 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    # Filter adv_embeddings
+    adv_embeddings = {agent.adv_name: adv_embeddings[agent.adv_name] for agent in agents}
+
     rng.shuffle(publishers)
     
     num_pub = 300
@@ -193,7 +196,7 @@ if __name__ == "__main__":
                       'wiadomosci.onet.pl', 'approdocalabria.it', 'buttalapasta.it']
     init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
 
-    soglia_ctr_list = [0.97]
+    soglia_ctr_list = [0.9]
     alpha_list = [1]
     
     tasks = []
@@ -203,6 +206,6 @@ if __name__ == "__main__":
                 tasks.append((output_dir, run, init_publisher_list, publisher_embeddings, auction, num_iter, rounds_per_iter, soglia_ctr, embedding_size, obs_embedding_size, adv_embeddings, alpha))
 
     start_time = time.time()
-    with multiprocessing.Pool(processes=2) as pool:
+    with multiprocessing.Pool(processes=1) as pool:
         pool.starmap(run_simulation, tasks)
     print(f'Total time: {time.time() - start_time}')

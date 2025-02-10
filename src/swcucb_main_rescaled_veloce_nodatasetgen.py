@@ -3,7 +3,7 @@ import multiprocessing
 import os
 
 import pandas as pd
-from CombinatorialLinUCB_giusto import CombinatorialLinUCBRight
+from SWCUCB import SWCUCB
 from new_main import *
 import time
 import pickle
@@ -61,9 +61,11 @@ def parse_config(path):
     # Rescaled publisher embeddings
     rescaled_publisher_embeddings_path = config['rescaled_publisher_embedding_path']
     rescaled_publisher_embeddings = pickle.load(open(rescaled_publisher_embeddings_path, 'rb'))
+    # Window size for SWCombinatorialLinUCB
+    window_size_list = config['window_size_list']
 
     return (rng, config, random_seed, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size,
-            embedding_var, obs_embedding_size, adv_embeddings, publisher_embeddings, rescaled_publisher_embeddings)
+            embedding_var, obs_embedding_size, adv_embeddings, publisher_embeddings, rescaled_publisher_embeddings, window_size_list)
 
 from ortools.linear_solver import pywraplp
 
@@ -122,29 +124,34 @@ def knapsack(
         df: pd.DataFrame,
         soglia_ctr: float = None,
 ) -> pd.DataFrame:
-    n, clicks, impressions = get_data(df)
-    return solver(df, n, clicks, impressions, soglia_ctr)
+    df_before_drift = df[['publisher', 'true_clicks_before_drift', 'clicks_before_drift', 'impressions_before_drift']]
+    df_before_drift = df_before_drift.rename(columns={'true_clicks_before_drift': 'true_clicks', 'clicks_before_drift': 'clicks', 'impressions_before_drift': 'impressions'})
+    n, clicks, impressions = get_data(df_before_drift)
+    df_before_drift = solver(df_before_drift, n, clicks, impressions, soglia_ctr)
+    df_after_drift = df[['publisher', 'true_clicks_after_drift', 'clicks_after_drift', 'impressions_after_drift']]
+    df_after_drift = df_after_drift.rename(columns={'true_clicks_after_drift': 'true_clicks', 'clicks_after_drift': 'clicks', 'impressions_after_drift': 'impressions'})
+    n, clicks, impressions = get_data(df_after_drift)
+    df_after_drift = solver(df_after_drift, n, clicks, impressions, soglia_ctr)
+    return df_before_drift, df_after_drift
 
 def simulation_run(
         run: int, init_publisher_list: list[Publisher], init_publisher_embeddings: dict, sim_auctions: pd.DataFrame, num_iter: int,
-        soglia_ctr: float, embedding_size: int, alpha: float
+        soglia_ctr: float, embedding_size: int, alpha: float, window_size: int
 ) -> tuple[pd.DataFrame]:
     agent_stats = pd.DataFrame()
-    comb_linucb = CombinatorialLinUCBRight(
-        alpha=alpha, d=embedding_size, publisher_list=init_publisher_list
-    )
+    cucb = SWCUCB(publisher_list=init_publisher_list, alpha=alpha, window_size=window_size)
     for i in range(num_iter):
-        if i > 0:
-            publisher_list = comb_linucb.round_iteration(
+        if i > 1:
+            publisher_list = cucb.round_iteration(
                 curr_publisher_list=publisher_list,
                 run=run,
                 iteration=i,
-                soglia_ctr=soglia_ctr
+                soglia_ctr=soglia_ctr,
             )
         else:
+            cucb.set_time_t(i+1)
             publisher_list = init_publisher_list
-            comb_linucb.initial_round(run=run, iteration=i)
-
+        
         publisher_name_list = [publisher.name for publisher in publisher_list]
         curr_iter_df = sim_auctions[(sim_auctions['Iteration'] == i)&(sim_auctions['publisher'].isin(publisher_name_list))]
         agent_stats_pub = curr_iter_df.to_dict(orient='records')
@@ -153,7 +160,12 @@ def simulation_run(
         group_iter['CTR'] = group_iter['clicks'] / group_iter['impressions']
         print(f'[Run {run}, Iteration {i}] Actual CTR: {group_iter["CTR"].values[0]}')
         
-        comb_linucb.update(agent_stats_pub, init_publisher_embeddings)
+        for publisher_data in agent_stats_pub:
+            cucb.update_arm(
+                publisher_name=publisher_data['publisher'],
+                clicks=publisher_data['clicks'],
+                impressions=publisher_data['impressions']
+            )
 
         agent_stats = pd.concat([agent_stats, curr_iter_df])
 
@@ -162,29 +174,30 @@ def simulation_run(
 
 def run_simulation(
         output_dir: str, run: int, random_seed: int, init_publisher_list: list[Publisher], publisher_embeddings: dict, num_iter: int, rounds_per_iter: int, 
-        soglia_ctr: float, embedding_size: int, adv_embeddings: dict, alpha: float, rng: np.random.Generator = None):
+        soglia_ctr: float, embedding_size: int, adv_embeddings: dict, alpha: float, rng: np.random.Generator = None, iteration_drift: int = 30, num_participants_per_round: int = 4, window_size: int = 10):
+
     # Set up Random Number Generator
     # Different seed for each run
     rng = np.random.default_rng(run+random_seed)
     np.random.seed(run+random_seed)
-    
+
     sim_auctions = pd.read_csv(
         os.path.join(output_dir, f'sim_auctions_run_{run}.csv'))
-    
     group_pub_res = pd.read_csv(
         os.path.join(output_dir, f'group_pub_res_run_{run}.csv'))
     
-    if not os.path.exists(os.path.join(output_dir, f'opt_exp_results_run_{run}.csv')):
-        opt_exp_results = knapsack(group_pub_res, soglia_ctr=soglia_ctr)
-        opt_exp_results.to_csv(
-            os.path.join(output_dir, f'opt_exp_results_run_{run}.csv'), index=False)
+    opt_exp_results_before_drift, opt_exp_results_after_drift = knapsack(group_pub_res, soglia_ctr=soglia_ctr)
+    opt_exp_results_before_drift.to_csv(
+        os.path.join(output_dir, f'opt_exp_results_before_drift_run_{run}.csv'), index=False)
+    opt_exp_results_after_drift.to_csv(
+        os.path.join(output_dir, f'opt_exp_results_after_drift_run_{run}.csv'), index=False)
 
     rescaled_publisher_embeddings = {publisher.name: publisher.embedding for publisher in init_publisher_list}
 
-    agent_stats = simulation_run(run, init_publisher_list, rescaled_publisher_embeddings, sim_auctions, num_iter, soglia_ctr, embedding_size, alpha)
+    agent_stats = simulation_run(run, init_publisher_list, rescaled_publisher_embeddings, sim_auctions, num_iter, soglia_ctr, embedding_size, alpha, window_size)
 
     agent_stats.to_csv(
-        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}.csv'), index=False)
+        os.path.join(output_dir, f'agent_stats_run_{run}_ctr_{soglia_ctr}_alpha_{alpha}_ws_{window_size}.csv'), index=False)
 
 
 if __name__ == "__main__":
@@ -195,12 +208,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     (rng, config, random_seed, agent_configs, agents2items, agents2item_values, num_runs, max_slots, embedding_size, embedding_var,
-     obs_embedding_size, adv_embeddings, publisher_embeddings, rescaled_publisher_embeddings) = parse_config(args.config)
+     obs_embedding_size, adv_embeddings, publisher_embeddings, rescaled_publisher_embeddings, window_size_list) = parse_config(args.config)
     agents = instantiate_agents(rng, agent_configs, agents2item_values, agents2items)
     auction, num_iter, rounds_per_iter, output_dir = instantiate_auction(rng, config, agents2items, agents2item_values,
                                                                          agents, max_slots, embedding_size,
                                                                          embedding_var, obs_embedding_size)
     publishers = instantiate_publishers(rescaled_publisher_embeddings, rounds_per_iter)
+
+    num_participants_per_round = config['num_participants_per_round']
+    iteration_drift = config['iteration_drift']
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -215,14 +231,15 @@ if __name__ == "__main__":
                       'wiadomosci.onet.pl', 'approdocalabria.it', 'buttalapasta.it']
     init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
     
-    soglia_ctr_list = [0.86]
+    soglia_ctr_list = [0.99]
     alpha_list = [1]
     
     tasks = []
     for soglia_ctr in soglia_ctr_list:
-        for alpha in alpha_list:
-            for run in range(num_runs):
-                tasks.append((output_dir, run, random_seed, init_publisher_list, publisher_embeddings, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha, rng))
+        for window_size in window_size_list:
+            for alpha in alpha_list:
+                for run in range(num_runs):
+                    tasks.append((output_dir, run, random_seed, init_publisher_list, publisher_embeddings, num_iter, rounds_per_iter, soglia_ctr, embedding_size, adv_embeddings, alpha, rng, iteration_drift, num_participants_per_round, window_size))
 
     start_time = time.time()
     with multiprocessing.Pool(processes=16) as pool:

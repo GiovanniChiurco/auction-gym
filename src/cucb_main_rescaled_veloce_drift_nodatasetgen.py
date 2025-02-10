@@ -234,7 +234,7 @@ if __name__ == "__main__":
                       'wiadomosci.onet.pl', 'approdocalabria.it', 'buttalapasta.it']
     init_publisher_list = [pub for pub in init_publisher_list if pub.name not in pub_to_exclude]
     
-    soglia_ctr_list = [0.75]
+    soglia_ctr_list = [0.99]
     alpha_list = [1]
     
     tasks = []
